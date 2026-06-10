@@ -47,12 +47,16 @@ class QwenVLWrapper:
         mode: str = "subprocess",
         conda_env: str = "isaaclab",
         inference_script_path: str = "/home/bluepoisons/Desktop/FURP/VLN/ZhiruiSHEN-VLN/src/vln_inference/run_inference_cli.py",
+        force_cpu: bool = False,
+        gpu_device: str = "0",
     ) -> None:
         self.model_path = model_path
         self.max_new_tokens = max_new_tokens
         self.mode = mode
         self.conda_env = conda_env
         self.inference_script_path = inference_script_path
+        self.force_cpu = force_cpu
+        self.gpu_device = gpu_device
         self._model = None
         self._processor = None
 
@@ -65,6 +69,11 @@ class QwenVLWrapper:
 
         if not os.path.exists(self.model_path):
             raise FileNotFoundError(f"Model path not found: {self.model_path}")
+
+        if self.force_cpu:
+            os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
+        elif self.gpu_device:
+            os.environ["CUDA_VISIBLE_DEVICES"] = self.gpu_device
 
         # Import heavy ML dependencies only in local mode.
         from PIL import Image  # noqa: F401
@@ -106,17 +115,7 @@ class QwenVLWrapper:
 
         raw_image = Image.open(image_path).convert("RGB")
 
-        prompt = (
-            "You are a warehouse navigation assistant. "
-            "Here is the exact map memory of the environment: "
-            "[shelf with purple boxes is at x=-6.78, y=10.96], "
-            "[plant is at x=-0.43, y=-2.92], "
-            "[chair is at x=-0.54, y=-0.69]. "
-            "Given the user instruction and scene image, output a short target description "
-            "and include one strict JSON object with keys x, y, yaw in map frame. "
-            "If the instruction matches a known object in the memory, use its exact coordinates. "
-            f"User instruction: {instruction}"
-        )
+        prompt = self._build_prompt(instruction)
 
         messages = [
             {
@@ -145,8 +144,34 @@ class QwenVLWrapper:
             **inputs,
             max_new_tokens=self.max_new_tokens,
         )
-        output = self._processor.batch_decode(generated_ids, skip_special_tokens=True)
-        return output[0].split("assistant\n")[-1] if "assistant\n" in output[0] else output[0]
+        return self._decode_generated_text(inputs=inputs, generated_ids=generated_ids)
+
+    @staticmethod
+    def _build_prompt(instruction: str) -> str:
+        return (
+            "You are a warehouse navigation assistant. "
+            "Use the scene image to verify whether the target object is visible. "
+            "Known map memory in map frame: "
+            "shelf with purple boxes: x=-6.78, y=10.96, yaw=0.0; "
+            "plant: x=-0.43, y=-2.92, yaw=0.0; "
+            "chair: x=-0.54, y=-0.69, yaw=1.57. "
+            "Return only one compact JSON object with keys "
+            "target, visible, confidence, x, y, yaw. "
+            "If the target is not visible but exists in map memory, use the memory coordinates "
+            "and set visible=false. "
+            f"User instruction: {instruction}"
+        )
+
+    def _decode_generated_text(self, inputs, generated_ids) -> str:
+        generated_ids_trimmed = [
+            out_ids[len(in_ids):] for in_ids, out_ids in zip(inputs.input_ids, generated_ids)
+        ]
+        output = self._processor.batch_decode(
+            generated_ids_trimmed,
+            skip_special_tokens=True,
+            clean_up_tokenization_spaces=False,
+        )
+        return output[0].strip()
 
     def _infer_via_subprocess(self, instruction: str, image_path: str) -> str:
         if not os.path.exists(self.inference_script_path):
@@ -169,11 +194,15 @@ class QwenVLWrapper:
             instruction,
             "--max-new-tokens",
             str(self.max_new_tokens),
-            "--force-cpu",
         ]
 
         env = os.environ.copy()
-        env["CUDA_VISIBLE_DEVICES"] = "-1"
+        if self.force_cpu:
+            cmd.append("--force-cpu")
+            env["CUDA_VISIBLE_DEVICES"] = "-1"
+        elif self.gpu_device:
+            cmd.extend(["--gpu-device", self.gpu_device])
+            env["CUDA_VISIBLE_DEVICES"] = self.gpu_device
         proc = subprocess.run(cmd, check=False, capture_output=True, text=True, env=env)
         if proc.returncode != 0:
             stderr = proc.stderr.strip() if proc.stderr else "No stderr"

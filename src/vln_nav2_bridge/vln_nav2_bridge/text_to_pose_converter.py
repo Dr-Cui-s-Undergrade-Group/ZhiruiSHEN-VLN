@@ -25,13 +25,12 @@ class TextToPoseConverter:
 
     def convert(self, instruction: str, model_output: str) -> Dict[str, object]:
         """Return dict with x, y, yaw and conversion metadata."""
-        # Prefer deterministic instruction rules first for known landmarks.
-        parsed = self._fallback_from_instruction(instruction)
-        method = "instruction_fallback"
+        parsed = self._parse_json_pose(model_output)
+        method = "json"
 
         if parsed is None:
-            parsed = self._parse_json_pose(model_output)
-            method = "json"
+            parsed = self._fallback_from_instruction(instruction)
+            method = "instruction_fallback"
 
         if parsed is None:
             parsed = self._fallback_from_text(instruction, model_output)

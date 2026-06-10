@@ -4,8 +4,6 @@ import os
 import sys
 
 from PIL import Image
-import torch
-from transformers import AutoProcessor, BitsAndBytesConfig, Qwen3VLForConditionalGeneration
 
 
 def _patch_params4bit_constructor() -> None:
@@ -32,6 +30,9 @@ def _patch_params4bit_constructor() -> None:
 
 
 def _build_model(model_path: str, enable_cpu_offload: bool):
+    import torch
+    from transformers import BitsAndBytesConfig, Qwen3VLForConditionalGeneration
+
     bnb_config = BitsAndBytesConfig(
         load_in_4bit=True,
         bnb_4bit_compute_dtype=torch.bfloat16,
@@ -48,6 +49,9 @@ def _build_model(model_path: str, enable_cpu_offload: bool):
 
 
 def _build_model_cpu(model_path: str):
+    import torch
+    from transformers import Qwen3VLForConditionalGeneration
+
     # Force full CPU inference to avoid GPU/offload dispatch issues.
     return Qwen3VLForConditionalGeneration.from_pretrained(
         model_path,
@@ -70,12 +74,41 @@ def _move_inputs_for_auto_device(inputs, model):
     return inputs
 
 
+def _build_prompt(instruction: str) -> str:
+    return (
+        "You are a warehouse navigation assistant. "
+        "Use the scene image to verify whether the target object is visible. "
+        "Known map memory in map frame: "
+        "shelf with purple boxes: x=-6.78, y=10.96, yaw=0.0; "
+        "plant: x=-0.43, y=-2.92, yaw=0.0; "
+        "chair: x=-0.54, y=-0.69, yaw=1.57. "
+        "Return only one compact JSON object with keys "
+        "target, visible, confidence, x, y, yaw. "
+        "If the target is not visible but exists in map memory, use the memory coordinates "
+        "and set visible=false. "
+        f"User instruction: {instruction}"
+    )
+
+
+def _decode_generated_text(processor, inputs, generated_ids) -> str:
+    generated_ids_trimmed = [
+        out_ids[len(in_ids):] for in_ids, out_ids in zip(inputs.input_ids, generated_ids)
+    ]
+    output = processor.batch_decode(
+        generated_ids_trimmed,
+        skip_special_tokens=True,
+        clean_up_tokenization_spaces=False,
+    )
+    return output[0].strip()
+
+
 def run(
     model_path: str,
     image_path: str,
     instruction: str,
     max_new_tokens: int,
     force_cpu: bool,
+    gpu_device: str,
 ) -> str:
     if not os.path.exists(model_path):
         raise FileNotFoundError(f"Model path not found: {model_path}")
@@ -83,25 +116,22 @@ def run(
         raise FileNotFoundError(f"Image path not found: {image_path}")
 
     if force_cpu:
+        os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
+    elif gpu_device:
+        os.environ["CUDA_VISIBLE_DEVICES"] = gpu_device
+
+    if force_cpu:
         model = _build_model_cpu(model_path=model_path)
     else:
         _patch_params4bit_constructor()
         model = _build_model(model_path=model_path, enable_cpu_offload=True)
 
+    from transformers import AutoProcessor
+
     processor = AutoProcessor.from_pretrained(model_path, trust_remote_code=True)
 
     raw_image = Image.open(image_path).convert("RGB")
-    prompt = (
-        "You are a warehouse navigation assistant. "
-        "Here is the exact map memory of the environment: "
-        "[shelf with purple boxes is at x=-6.78, y=10.96], "
-        "[plant is at x=-0.43, y=-2.92], "
-        "[chair is at x=-0.54, y=-0.69]. "
-        "Given the user instruction and scene image, output a short target description "
-        "and include one strict JSON object with keys x, y, yaw in map frame. "
-        "If the instruction matches a known object in the memory, use its exact coordinates. "
-        f"User instruction: {instruction}"
-    )
+    prompt = _build_prompt(instruction)
 
     messages = [
         {
@@ -136,8 +166,7 @@ def run(
         inputs = _move_inputs_for_auto_device(inputs, model)
         generated_ids = model.generate(**inputs, max_new_tokens=max_new_tokens)
 
-    output = processor.batch_decode(generated_ids, skip_special_tokens=True)
-    return output[0].split("assistant\n")[-1] if "assistant\n" in output[0] else output[0]
+    return _decode_generated_text(processor, inputs, generated_ids)
 
 
 def main() -> int:
@@ -147,6 +176,7 @@ def main() -> int:
     parser.add_argument("--instruction", required=True)
     parser.add_argument("--max-new-tokens", type=int, default=256)
     parser.add_argument("--force-cpu", action="store_true")
+    parser.add_argument("--gpu-device", default="0")
     args = parser.parse_args()
 
     try:
@@ -156,6 +186,7 @@ def main() -> int:
             instruction=args.instruction,
             max_new_tokens=args.max_new_tokens,
             force_cpu=args.force_cpu,
+            gpu_device=args.gpu_device,
         )
         print(result)
         return 0

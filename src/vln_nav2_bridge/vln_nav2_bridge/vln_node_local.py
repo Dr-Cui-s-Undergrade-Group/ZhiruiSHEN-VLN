@@ -1,10 +1,14 @@
 #!/usr/bin/env python3
+import io
 import math
+import os
+import time
 from typing import Optional
 
 import rclpy
 from rclpy.node import Node
 from rclpy.parameter import Parameter
+from sensor_msgs.msg import CompressedImage, Image
 from std_msgs.msg import String
 from geometry_msgs.msg import PoseStamped
 from nav2_simple_commander.robot_navigator import BasicNavigator, TaskResult
@@ -47,6 +51,17 @@ class VLNBridgeNodeLocal(Node):
         self.declare_parameter("safe_max_y", 15.0)
         self.declare_parameter("inference_mode", "subprocess")
         self.declare_parameter("conda_env", "isaaclab")
+        self.declare_parameter("force_cpu", False)
+        self.declare_parameter("gpu_device", "0")
+        self.declare_parameter("image_topic", "")
+        self.declare_parameter("compressed_image_topic", "")
+        self.declare_parameter(
+            "live_image_path",
+            "/home/bluepoisons/Desktop/FURP/VLN/ZhiruiSHEN-VLN/data/runtime/latest_camera.png",
+        )
+        self.declare_parameter("image_timeout_sec", 5.0)
+        self.declare_parameter("require_fresh_image", False)
+        self.declare_parameter("live_image_save_interval_sec", 0.5)
         self.declare_parameter(
             "inference_script_path",
             "/home/bluepoisons/Desktop/FURP/VLN/ZhiruiSHEN-VLN/src/vln_inference/run_inference_cli.py",
@@ -65,6 +80,16 @@ class VLNBridgeNodeLocal(Node):
         self.safe_max_y = float(self.get_parameter("safe_max_y").value)
         self.inference_mode = self.get_parameter("inference_mode").value
         self.conda_env = self.get_parameter("conda_env").value
+        self.force_cpu = bool(self.get_parameter("force_cpu").value)
+        self.gpu_device = self.get_parameter("gpu_device").value
+        self.image_topic = self.get_parameter("image_topic").value
+        self.compressed_image_topic = self.get_parameter("compressed_image_topic").value
+        self.live_image_path = self.get_parameter("live_image_path").value
+        self.image_timeout_sec = float(self.get_parameter("image_timeout_sec").value)
+        self.require_fresh_image = bool(self.get_parameter("require_fresh_image").value)
+        self.live_image_save_interval_sec = float(
+            self.get_parameter("live_image_save_interval_sec").value
+        )
         self.inference_script_path = self.get_parameter("inference_script_path").value
 
         # ============ Initialize model and converter (lightweight, no blocking) ============
@@ -74,6 +99,8 @@ class VLNBridgeNodeLocal(Node):
             mode=self.inference_mode,
             conda_env=self.conda_env,
             inference_script_path=self.inference_script_path,
+            force_cpu=self.force_cpu,
+            gpu_device=self.gpu_device,
         )
         self.converter = TextToPoseConverter(
             min_x=self.safe_min_x,
@@ -88,6 +115,11 @@ class VLNBridgeNodeLocal(Node):
         self.navigator = None
         self.goal_pub = None
         self.sub = None
+        self.image_sub = None
+        self.compressed_image_sub = None
+        self.latest_image_path = None
+        self.latest_image_wall_time = 0.0
+        self.last_image_save_wall_time = 0.0
         self.nav2_initialized = False
 
         # Single-shot timer: runs once after node starts spinning, then destroys itself
@@ -130,12 +162,14 @@ class VLNBridgeNodeLocal(Node):
                 self._on_instruction,
                 10,
             )
+            self._setup_image_subscriptions()
 
             self.nav2_initialized = True
             self.get_logger().info(
                 "Node ready. "
                 f"Listening on {self.instruction_topic}. "
-                f"dry_run={self.dry_run}, inference_mode={self.inference_mode}"
+                f"dry_run={self.dry_run}, inference_mode={self.inference_mode}, "
+                f"force_cpu={self.force_cpu}, gpu_device={self.gpu_device}"
             )
 
         except Exception as exc:
@@ -160,14 +194,14 @@ class VLNBridgeNodeLocal(Node):
         self.get_logger().info(f"Received instruction: {instruction}")
 
         try:
+            image_path = self._get_inference_image_path()
             model_output = self.model.infer_goal_text(
                 instruction=instruction,
-                image_path=self.image_path,
+                image_path=image_path,
             )
         except Exception as exc:
-            self.get_logger().error(f"显存爆了或推理失败: {exc}")
-            self.get_logger().info("启动紧急备用降级逻辑 (Fallback)...")
-            # 不 return！强行把指令本身当作输出，去触发 text_to_pose_converter 里的正则关键词！
+            self.get_logger().error(f"Model inference failed: {exc}")
+            self.get_logger().info("Using deterministic keyword fallback.")
             model_output = instruction
 
         self.get_logger().info(f"Model output: {model_output}")
@@ -219,6 +253,123 @@ class VLNBridgeNodeLocal(Node):
         pose.pose.orientation.z = math.sin(yaw / 2.0)
         pose.pose.orientation.w = math.cos(yaw / 2.0)
         return pose
+
+    def _setup_image_subscriptions(self) -> None:
+        if self.image_topic:
+            self.image_sub = self.create_subscription(
+                Image,
+                self.image_topic,
+                self._on_image,
+                1,
+            )
+            self.get_logger().info(f"Subscribed raw image topic: {self.image_topic}")
+
+        if self.compressed_image_topic:
+            self.compressed_image_sub = self.create_subscription(
+                CompressedImage,
+                self.compressed_image_topic,
+                self._on_compressed_image,
+                1,
+            )
+            self.get_logger().info(
+                f"Subscribed compressed image topic: {self.compressed_image_topic}"
+            )
+
+        if not self.image_topic and not self.compressed_image_topic:
+            self.get_logger().info(f"Using static image path: {self.image_path}")
+
+    def _get_inference_image_path(self) -> str:
+        live_configured = bool(self.image_topic or self.compressed_image_topic)
+        if not live_configured:
+            return self.image_path
+
+        now = time.monotonic()
+        if self.latest_image_path and os.path.exists(self.latest_image_path):
+            age = now - self.latest_image_wall_time
+            if age <= self.image_timeout_sec:
+                return self.latest_image_path
+
+            message = (
+                f"Latest live image is stale ({age:.1f}s old, "
+                f"timeout={self.image_timeout_sec:.1f}s)."
+            )
+        else:
+            message = "No live camera image has been received yet."
+
+        if self.require_fresh_image:
+            raise RuntimeError(message)
+
+        self.get_logger().warning(f"{message} Falling back to static image path.")
+        return self.image_path
+
+    def _on_image(self, msg: Image) -> None:
+        try:
+            image = self._pil_from_image_msg(msg)
+            self._save_live_image(image)
+        except Exception as exc:
+            self.get_logger().warning(f"Failed to decode raw image: {exc}")
+
+    def _on_compressed_image(self, msg: CompressedImage) -> None:
+        try:
+            from PIL import Image as PILImage
+
+            image = PILImage.open(io.BytesIO(bytes(msg.data))).convert("RGB")
+            self._save_live_image(image)
+        except Exception as exc:
+            self.get_logger().warning(f"Failed to decode compressed image: {exc}")
+
+    def _save_live_image(self, image) -> None:
+        now = time.monotonic()
+        if now - self.last_image_save_wall_time < self.live_image_save_interval_sec:
+            return
+
+        os.makedirs(os.path.dirname(self.live_image_path), exist_ok=True)
+        tmp_path = f"{self.live_image_path}.tmp"
+        image.save(tmp_path, format="PNG")
+        os.replace(tmp_path, self.live_image_path)
+        self.latest_image_path = self.live_image_path
+        self.latest_image_wall_time = now
+        self.last_image_save_wall_time = now
+
+    @staticmethod
+    def _pil_from_image_msg(msg: Image):
+        from PIL import Image as PILImage
+
+        encoding = msg.encoding.lower()
+        width = int(msg.width)
+        height = int(msg.height)
+        channels_by_encoding = {
+            "rgb8": 3,
+            "bgr8": 3,
+            "rgba8": 4,
+            "bgra8": 4,
+            "mono8": 1,
+        }
+        if encoding not in channels_by_encoding:
+            raise ValueError(f"Unsupported image encoding: {msg.encoding}")
+
+        channels = channels_by_encoding[encoding]
+        row_bytes = width * channels
+        data = bytes(msg.data)
+        if int(msg.step) != row_bytes:
+            rows = [
+                data[row_start:row_start + row_bytes]
+                for row_start in range(0, int(msg.step) * height, int(msg.step))
+            ]
+            data = b"".join(rows)
+
+        if encoding == "rgb8":
+            return PILImage.frombytes("RGB", (width, height), data)
+        if encoding == "bgr8":
+            return PILImage.frombytes("RGB", (width, height), data, "raw", "BGR")
+        if encoding == "rgba8":
+            return PILImage.frombytes("RGBA", (width, height), data).convert("RGB")
+        if encoding == "bgra8":
+            return PILImage.frombytes("RGBA", (width, height), data, "raw", "BGRA").convert("RGB")
+        if encoding == "mono8":
+            return PILImage.frombytes("L", (width, height), data).convert("RGB")
+
+        raise ValueError(f"Unsupported image encoding: {msg.encoding}")
 
 
 def main(args: Optional[list] = None) -> None:
