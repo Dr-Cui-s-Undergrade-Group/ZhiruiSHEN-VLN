@@ -342,5 +342,45 @@ Nav2/AMCL 启动注意事项：
 
 当前更新后的判断：AMCL/TF 问题已经解决；Node 6 剩余风险是 shelf 末端 goal checker 容差让机器人停在货架边缘，以及长距离反向任务超出默认超时。
 
+2026-06-13 完整重跑 `data/node6_trials_6_11.txt` 后，输出：
+
+```text
+data/node6_auto_trials_2026-06-13_todo6_11.csv
+```
+
+本轮必须使用 double 类型参数：
+
+```text
+nav_timeout_sec:=900.0
+--timeout-sec 900.0
+```
+
+重跑结果：
+
+| 指标 | 结果 |
+|---|---:|
+| Trial 数 | 6 |
+| Bridge `nav_result=success` | 2/6 |
+| 末端位姿进入 0.8 m 成功半径 | 6/6 |
+| `visual_semantic_map` | 2/6 |
+| `semantic_explore_visual_scan_failed` | 4/6 |
+
+逐条结果：
+
+| Trial | 指令 | Bridge 结果 | parse method | final error |
+|---:|---|---|---|---:|
+| 1 | Navigate to the chair beside the plant. | success | visual_semantic_map | 0.301 m |
+| 2 | Go to the purple boxes. | success | visual_semantic_map | 0.235 m |
+| 3 | Move to the right shelf with purple boxes. | failed | semantic_explore_visual_scan_failed | 0.225 m |
+| 4 | Navigate to the shelf area containing purple packages. | failed | semantic_explore_visual_scan_failed | 0.232 m |
+| 5 | Go to the shelf. | failed | semantic_explore_visual_scan_failed | 0.168 m |
+| 6 | Move to the right shelf. | failed | semantic_explore_visual_scan_failed | 0.142 m |
+
+结论需要拆开看：
+
+* Nav2/AMCL 导航执行本轮是可用的；6/6 都进入目标成功半径。
+* Bridge 层只判 2/6 success，原因是后 4 条 shelf/right-shelf 到达后视觉确认失败。模型能看到 cart / purple boxes / purple packages，但反复判断“shelf 不可见”，因此返回 `semantic_explore_confirm_failed: target_not_visible_after_visual_scan`。
+* 这已经不是优先的 Nav2 blocker，而是 Node 7 可利用的明确缺陷：shelf/right-shelf 的视觉确认语义过窄，需要把 package area、cart with purple boxes、purple packages 等证据纳入同一目标确认，或把结果指标拆成 `navigation_arrived` 和 `visual_confirmed`。
+
 
 </details>

@@ -1,0 +1,55 @@
+trial_id,timestamp,duration_sec,instruction,image_path,model_output,model_target,visible,confidence,parse_method,target_x,target_y,target_yaw,final_pose_source,final_x,final_y,final_yaw,final_error_m,within_success_radius,nav_result,failure_reason
+1,2026-06-13 14:08:18,436.672,Navigate to the chair beside the plant.,/home/bluepoisons/Desktop/FURP/VLN/ZhiruiSHEN-VLN/data/runtime/trial_images/trial_0001_20260613_140101_674439897_scan_01_navigate_to_the_chair_beside_the_plant.png,"```json
+{
+  ""target"": ""chair"",
+  ""visible"": true,
+  ""confidence"": 0.95,
+  ""horizontal_position"": ""center"",
+  ""evidence"": ""The chair is visible in the image, positioned beside the plant on the floor. It is a black office-style chair with a modern design, located on the left side of the warehouse space.""
+}
+```",chair,True,0.95,visual_semantic_map,-0.54,-0.69,1.57,amcl_pose,-0.299,-0.51,1.231,0.301,True,success,
+2,2026-06-13 14:19:32,671.914,Go to the purple boxes.,/home/bluepoisons/Desktop/FURP/VLN/ZhiruiSHEN-VLN/data/runtime/trial_images/trial_0002_20260613_140820_969161016_scan_01_go_to_the_purple_boxes.png,"```json
+{
+  ""target"": ""purple boxes"",
+  ""visible"": true,
+  ""confidence"": 0.95,
+  ""horizontal_position"": ""left"",
+  ""evidence"": ""The purple boxes are visible on the shelves on the left side of the warehouse. They are stacked on pallets and are clearly in the frame.""
+}
+```",purple boxes,True,0.95,visual_semantic_map,-6.78,10.96,0.0,amcl_pose,-6.603,11.115,-0.256,0.235,True,success,
+3,2026-06-13 14:22:33,177.553,Move to the right shelf with purple boxes.,/home/bluepoisons/Desktop/FURP/VLN/ZhiruiSHEN-VLN/data/runtime/trial_images/trial_0018_20260613_142226_769445299_scan_08_move_to_the_right_shelf_with_purple_boxe.png,"```json
+{
+  ""target"": ""right shelf with purple boxes"",
+  ""visible"": false,
+  ""confidence"": 0.0,
+  ""horizontal_position"": ""unknown"",
+  ""evidence"": ""The image shows a warehouse with a cart carrying purple boxes. However, there is no visible shelf to the right of the cart, and the user instruction to move to the right shelf is not supported by the visual evidence provided.""
+}
+```",right shelf with purple boxes,False,0.0,semantic_explore_visual_scan_failed,-6.78,10.96,0.0,amcl_pose,-6.588,11.076,0.334,0.225,True,failed,semantic_explore_confirm_failed: target_not_visible_after_visual_scan
+4,2026-06-13 14:25:43,186.839,Navigate to the shelf area containing purple packages.,/home/bluepoisons/Desktop/FURP/VLN/ZhiruiSHEN-VLN/data/runtime/trial_images/trial_0034_20260613_142536_331120721_scan_08_navigate_to_the_shelf_area_containing_pu.png,"```json
+{
+  ""target"": ""shelf area containing purple packages"",
+  ""visible"": false,
+  ""confidence"": 0.0,
+  ""horizontal_position"": ""unknown"",
+  ""evidence"": ""The image shows a warehouse with a cart carrying purple packages, but no shelf area is visible. The user's request to navigate to a shelf area containing purple packages is not supported by the image.""
+}
+```",shelf area containing purple packages,False,0.0,semantic_explore_visual_scan_failed,-6.78,10.96,0.0,amcl_pose,-6.592,11.097,0.515,0.232,True,failed,semantic_explore_confirm_failed: target_not_visible_after_visual_scan
+5,2026-06-13 14:28:24,158.948,Go to the shelf.,/home/bluepoisons/Desktop/FURP/VLN/ZhiruiSHEN-VLN/data/runtime/trial_images/trial_0050_20260613_142818_961949277_scan_08_go_to_the_shelf.png,"```json
+{
+  ""target"": ""shelf"",
+  ""visible"": false,
+  ""confidence"": 0.0,
+  ""horizontal_position"": ""unknown"",
+  ""evidence"": ""The image shows a warehouse interior with a cart loaded with boxes, but no shelf is visible in the image.""
+}
+```",shelf,False,0.0,semantic_explore_visual_scan_failed,-6.78,10.96,0.0,amcl_pose,-6.667,11.084,0.723,0.168,True,failed,semantic_explore_confirm_failed: target_not_visible_after_visual_scan
+6,2026-06-13 14:31:28,181.714,Move to the right shelf.,/home/bluepoisons/Desktop/FURP/VLN/ZhiruiSHEN-VLN/data/runtime/trial_images/trial_0066_20260613_143121_865481109_scan_08_move_to_the_right_shelf.png,"```json
+{
+  ""target"": ""right shelf"",
+  ""visible"": false,
+  ""confidence"": 0.0,
+  ""horizontal_position"": ""unknown"",
+  ""evidence"": ""The image shows a warehouse interior with a cart loaded with purple crates. There is no visible shelf on the right side of the image. The user instruction is to move to the right shelf, but the shelf is not present in the image.""
+}
+```",right shelf,False,0.0,semantic_explore_visual_scan_failed,-6.78,10.96,0.0,amcl_pose,-6.684,11.065,0.756,0.142,True,failed,semantic_explore_confirm_failed: target_not_visible_after_visual_scan
