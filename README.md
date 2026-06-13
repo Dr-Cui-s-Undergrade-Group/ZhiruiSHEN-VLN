@@ -382,5 +382,14 @@ nav_timeout_sec:=900.0
 * Bridge 层只判 2/6 success，原因是后 4 条 shelf/right-shelf 到达后视觉确认失败。模型能看到 cart / purple boxes / purple packages，但反复判断“shelf 不可见”，因此返回 `semantic_explore_confirm_failed: target_not_visible_after_visual_scan`。
 * 这已经不是优先的 Nav2 blocker，而是 Node 7 可利用的明确缺陷：shelf/right-shelf 的视觉确认语义过窄，需要把 package area、cart with purple boxes、purple packages 等证据纳入同一目标确认，或把结果指标拆成 `navigation_arrived` 和 `visual_confirmed`。
 
+Node 6 最终汇总结果见：
+
+```text
+data/node6_auto_trials_2026-06-13_final.csv
+docs/node6_final_report.md
+```
+
+最终 15 条评估中，Bridge `nav_result=success` 为 7/15，末端位姿进入 0.8 m 成功半径为 11/15。失败分类已经固化在 `docs/node6_final_report.md`：当前主 blocker 是 shelf/right-shelf 的视觉确认语义过窄，不再是 AMCL/TF 或 Nav2 planner/controller。
+
 
 </details>
