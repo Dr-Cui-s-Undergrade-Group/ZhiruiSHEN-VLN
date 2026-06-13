@@ -6,6 +6,26 @@
 
 重启电脑后可先参考环境快速恢复手册：[reset.md](reset.md)
 
+## 当前进度总览（2026-06-13）
+
+| 节点 | 状态 | 主要产出 |
+|---|---|---|
+| Node 1-5 | 已完成 | Isaac Sim/ROS 2 通信、Nav2 基础导航、本地 Qwen3-VL 感知、VLN-Nav2 bridge。 |
+| Node 6 | 已完成 | 15 条 integrated simulation evaluation、最终 CSV、failure taxonomy 和复现实验报告。 |
+| Node 7 | 已完成 | 指标拆分、shelf/package 语义确认修复、safe-start/safe-goal/dynamic timeout 扩展和 ablation report。 |
+| Node 8 | 下一步 | 汇总 Node 6/7 仿真结果，生成最终报告、图表和 poster 可复用材料。 |
+| Node 9 | 待开始 | 迁移到实体机器人并整理部署指南。 |
+
+Node 6/7 已经收尾，不需要继续按 Node 6 blocker 重跑。后续工作应从 Node 8 开始，基于以下文件整理最终仿真报告：
+
+```text
+data/node6_auto_trials_2026-06-13_final.csv
+data/node7_ablation_2026-06-13.csv
+data/node7_safe_navigation_checks_2026-06-13.csv
+docs/node6_final_report.md
+docs/node7_ablation_report.md
+```
+
 <a id="zh"></a>
 
 <details open>
