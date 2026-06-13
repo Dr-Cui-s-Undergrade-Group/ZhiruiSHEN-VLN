@@ -126,6 +126,9 @@ class Node6AutoTrials(Node):
                     "target_x": "",
                     "target_y": "",
                     "target_yaw": "",
+                    "navigation_arrived": False,
+                    "visual_confirmed": False,
+                    "task_success": False,
                     "nav_result": "timeout",
                     "failure_reason": f"No /vln_trial_result within {self.timeout_sec}s.",
                 }
@@ -246,7 +249,19 @@ class Node6AutoTrials(Node):
 
         error_m = math.hypot(final_x - target_x, final_y - target_y)
         enriched["final_error_m"] = round(error_m, 3)
-        enriched["within_success_radius"] = error_m <= self.success_radius_m
+        within_radius = error_m <= self.success_radius_m
+        enriched["within_success_radius"] = within_radius
+        enriched["navigation_arrived"] = self._as_bool(
+            enriched.get("navigation_arrived"),
+            default=within_radius,
+        ) or within_radius
+        enriched["visual_confirmed"] = self._as_bool(
+            enriched.get("visual_confirmed"),
+            default=self._infer_visual_confirmed(enriched),
+        )
+        enriched["task_success"] = bool(
+            enriched["navigation_arrived"] and enriched["visual_confirmed"]
+        )
         return enriched
 
     def _spin_for_pose_update(self, duration_sec: float) -> None:
@@ -278,6 +293,9 @@ class Node6AutoTrials(Node):
             "final_yaw",
             "final_error_m",
             "within_success_radius",
+            "navigation_arrived",
+            "visual_confirmed",
+            "task_success",
             "nav_result",
             "failure_reason",
         ]
@@ -303,6 +321,8 @@ class Node6AutoTrials(Node):
     def _print_summary(self, results: List[Dict[str, object]]) -> None:
         total = len(results)
         success = sum(1 for item in results if item.get("nav_result") == "success")
+        task_success = sum(1 for item in results if item.get("task_success") is True)
+        visual_confirmed = sum(1 for item in results if item.get("visual_confirmed") is True)
         json_count = sum(1 for item in results if item.get("parse_method") == "json")
         fallback_count = sum(
             1
@@ -316,8 +336,33 @@ class Node6AutoTrials(Node):
         self.get_logger().info(
             f"Final pose within {self.success_radius_m:.2f} m: {within_radius}/{total}"
         )
+        self.get_logger().info(f"Visual confirmed: {visual_confirmed}/{total}")
+        self.get_logger().info(f"Task success: {task_success}/{total}")
         self.get_logger().info(f"JSON parse rate: {json_count}/{total}")
         self.get_logger().info(f"Fallback rate: {fallback_count}/{total}")
+
+    @staticmethod
+    def _as_bool(value: object, default: bool = False) -> bool:
+        if value == "":
+            return default
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, str):
+            return value.strip().lower() in ("1", "true", "yes", "on")
+        if value is None:
+            return default
+        return bool(value)
+
+    @staticmethod
+    def _infer_visual_confirmed(result: Dict[str, object]) -> bool:
+        parse_method = str(result.get("parse_method", ""))
+        if parse_method in (
+            "visual_semantic_map",
+            "semantic_explore_then_visual_semantic_map",
+            "semantic_explore_relaxed_confirm",
+        ):
+            return True
+        return Node6AutoTrials._as_bool(result.get("visible"), default=False)
 
     @staticmethod
     def _yaw_from_quaternion(x: float, y: float, z: float, w: float) -> float:

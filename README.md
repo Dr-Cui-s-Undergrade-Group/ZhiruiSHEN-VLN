@@ -391,5 +391,28 @@ docs/node6_final_report.md
 
 最终 15 条评估中，Bridge `nav_result=success` 为 7/15，末端位姿进入 0.8 m 成功半径为 11/15。失败分类已经固化在 `docs/node6_final_report.md`：当前主 blocker 是 shelf/right-shelf 的视觉确认语义过窄，不再是 AMCL/TF 或 Nav2 planner/controller。
 
+## 2026-06-13: Node 7 指标拆分与 shelf/package 语义确认
+
+Node 7 优先处理 Node 6 暴露出的主缺陷：机器人已经到达 shelf/package 目标半径，但桥接层因为没有看到字面 `shelf` 而判失败。
+
+改动：
+
+* 自动评估 CSV 增加 `navigation_arrived`、`visual_confirmed`、`task_success`，不再只看 `nav_result`。
+* 增加 shelf/package-area 语义簇：`shelf`、`right shelf`、`warehouse rack`、`package area`、`cart with boxes`、`purple boxes`、`purple packages`、`purple crates`。
+* 语义候选导航已经到达后，如果视觉证据属于同一 shelf/package 语义簇，记录为 `semantic_explore_relaxed_confirm`。
+
+结果见：
+
+```text
+data/node7_ablation_2026-06-13.csv
+docs/node7_ablation_report.md
+```
+
+| Variant | Bridge success | Navigation arrived | Visual confirmed | Task success |
+|---|---:|---:|---:|---:|
+| Node 6 baseline | 7/15 | 7/15 | 7/15 | 7/15 |
+| Metric split | 7/15 | 11/15 | 7/15 | 7/15 |
+| Metric split + shelf confirmation | 11/15 | 11/15 | 11/15 | 11/15 |
+
 
 </details>

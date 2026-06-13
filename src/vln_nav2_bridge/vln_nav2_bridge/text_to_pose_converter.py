@@ -38,6 +38,35 @@ class TextToPoseConverter:
             "robot": (0.0, 0.0, 0.0),
             "center": (0.0, 0.0, 0.0),
         }
+        self._semantic_alias_groups = {
+            "plant": (
+                "plant",
+                "potted plant",
+                "green plant",
+            ),
+            "chair": (
+                "chair",
+                "office chair",
+                "black office chair",
+            ),
+            "shelf_package_area": (
+                "shelf",
+                "right shelf",
+                "warehouse rack",
+                "rack",
+                "package area",
+                "purple box",
+                "purple boxes",
+                "purple package",
+                "purple packages",
+                "purple crate",
+                "purple crates",
+                "cart with boxes",
+                "cart carrying purple boxes",
+                "cart carrying purple packages",
+                "boxes",
+            ),
+        }
 
     def convert(self, instruction: str, model_output: str) -> Dict[str, object]:
         """Return dict with x, y, yaw and conversion metadata."""
@@ -167,6 +196,19 @@ class TextToPoseConverter:
                 }
 
         return None
+
+    def semantic_cluster(self, text: str) -> str:
+        text_lower = text.lower()
+        for cluster, aliases in self._semantic_alias_groups.items():
+            if any(alias in text_lower for alias in aliases):
+                return cluster
+        return ""
+
+    def targets_share_semantic_cluster(self, first: str, second: str) -> bool:
+        first_cluster = self.semantic_cluster(first)
+        if not first_cluster:
+            return False
+        return first_cluster == self.semantic_cluster(second)
 
     def _fallback_from_text(self, instruction: str, model_output: str) -> Optional[Tuple[float, float, float]]:
         combined = f"{instruction}\n{model_output}".lower()

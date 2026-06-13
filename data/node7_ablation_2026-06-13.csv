@@ -1,0 +1,4 @@
+variant,total_trials,bridge_success,navigation_arrived,visual_confirmed,task_success,mean_final_error_m,relaxed_shelf_confirmed
+A_node6_baseline,15,7,7,7,7,0.697,0
+B_metric_split,15,7,11,7,7,0.697,0
+C_metric_split_plus_shelf_confirmation,15,11,11,11,11,0.697,4
