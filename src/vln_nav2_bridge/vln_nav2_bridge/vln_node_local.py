@@ -21,6 +21,7 @@ from std_msgs.msg import String
 from geometry_msgs.msg import PoseStamped, Twist
 from nav2_simple_commander.robot_navigator import BasicNavigator, TaskResult
 
+from .node6_map_preflight import DEFAULT_MAP_YAML, SimpleOccupancyMap
 from .qwen_model_wrapper import QwenVLWrapper
 from .text_to_pose_converter import TextToPoseConverter
 
@@ -114,6 +115,16 @@ class VLNBridgeNodeLocal(Node):
         self.declare_parameter("nav_stuck_recovery_backup_duration_sec", 1.0)
         self.declare_parameter("nav_stuck_recovery_turn_speed_rad_s", 0.35)
         self.declare_parameter("nav_stuck_recovery_turn_duration_sec", 1.0)
+        self.declare_parameter("safe_map_validation_enabled", True)
+        self.declare_parameter("safe_map_yaml", DEFAULT_MAP_YAML)
+        self.declare_parameter("safe_start_enabled", True)
+        self.declare_parameter("safe_goal_enabled", True)
+        self.declare_parameter("safe_pose_check_radius_m", 0.30)
+        self.declare_parameter("safe_pose_min_free_ratio", 0.95)
+        self.declare_parameter("safe_nearest_free_search_m", 0.75)
+        self.declare_parameter("dynamic_timeout_enabled", True)
+        self.declare_parameter("dynamic_timeout_min_sec", 240.0)
+        self.declare_parameter("dynamic_timeout_sec_per_m", 75.0)
         self.declare_parameter(
             "trial_log_path",
             "/home/bluepoisons/Desktop/FURP/VLN/ZhiruiSHEN-VLN/data/node6_trials.csv",
@@ -211,6 +222,30 @@ class VLNBridgeNodeLocal(Node):
         self.nav_stuck_recovery_turn_duration_sec = float(
             self.get_parameter("nav_stuck_recovery_turn_duration_sec").value
         )
+        self.safe_map_validation_enabled = self._as_bool(
+            self.get_parameter("safe_map_validation_enabled").value
+        )
+        self.safe_map_yaml = self.get_parameter("safe_map_yaml").value
+        self.safe_start_enabled = self._as_bool(self.get_parameter("safe_start_enabled").value)
+        self.safe_goal_enabled = self._as_bool(self.get_parameter("safe_goal_enabled").value)
+        self.safe_pose_check_radius_m = float(
+            self.get_parameter("safe_pose_check_radius_m").value
+        )
+        self.safe_pose_min_free_ratio = float(
+            self.get_parameter("safe_pose_min_free_ratio").value
+        )
+        self.safe_nearest_free_search_m = float(
+            self.get_parameter("safe_nearest_free_search_m").value
+        )
+        self.dynamic_timeout_enabled = self._as_bool(
+            self.get_parameter("dynamic_timeout_enabled").value
+        )
+        self.dynamic_timeout_min_sec = float(
+            self.get_parameter("dynamic_timeout_min_sec").value
+        )
+        self.dynamic_timeout_sec_per_m = float(
+            self.get_parameter("dynamic_timeout_sec_per_m").value
+        )
         self.trial_log_path = self.get_parameter("trial_log_path").value
         self.inference_script_path = self.get_parameter("inference_script_path").value
         self.server_script_path = self.get_parameter("server_script_path").value
@@ -234,6 +269,7 @@ class VLNBridgeNodeLocal(Node):
             min_y=self.safe_min_y,
             max_y=self.safe_max_y,
         )
+        self.occupancy_map = self._load_safe_occupancy_map()
 
         # ============ CRITICAL FIX 2: Defer Nav2 initialization to timer callback ============
         # This allows rclpy.spin() to start BEFORE waiting for Nav2 active.
@@ -255,6 +291,7 @@ class VLNBridgeNodeLocal(Node):
         self.trial_image_counter = 0
         self.image_save_lock = threading.Lock()
         self.nav2_initialized = False
+        self._safe_start_recovery_active = False
         self.instruction_callback_group = MutuallyExclusiveCallbackGroup()
         self.image_callback_group = ReentrantCallbackGroup()
         self._ensure_live_image_dirs()
@@ -586,6 +623,7 @@ class VLNBridgeNodeLocal(Node):
         x = float(parsed["x"])
         y = float(parsed["y"])
         yaw = float(parsed["yaw"])
+        x, y, yaw = self._safe_goal_candidate(x=x, y=y, yaw=yaw)
         method = parsed.get("method", "unknown")
         self.get_logger().info(
             f"Resolved target ({method}): x={x:.2f}, y={y:.2f}, yaw={yaw:.2f}"
@@ -641,6 +679,7 @@ class VLNBridgeNodeLocal(Node):
         x = float(parsed["x"])
         y = float(parsed["y"])
         yaw = float(parsed["yaw"])
+        x, y, yaw = self._safe_goal_candidate(x=x, y=y, yaw=yaw)
         target = str(parsed.get("target", "semantic_candidate"))
         self.get_logger().info(
             "Target was not confirmed in the current view. "
@@ -706,6 +745,10 @@ class VLNBridgeNodeLocal(Node):
         if self.navigator is None:
             return "failed", "Navigator is not initialized."
 
+        safe_start_result = self._recover_safe_start_if_needed()
+        if safe_start_result is not None and safe_start_result[0] not in ("success", "dry_run"):
+            return safe_start_result
+
         max_attempts = 1
         if self.nav_retry_on_stuck:
             max_attempts += self.nav_max_retries
@@ -756,11 +799,12 @@ class VLNBridgeNodeLocal(Node):
         best_distance = None
         last_progress_at = nav_started_at
         within_acceptance_since = None
+        effective_timeout_sec = self._effective_nav_timeout_sec(pose)
         while not self.navigator.isTaskComplete():
             elapsed = time.monotonic() - nav_started_at
-            if self.nav_timeout_sec > 0.0 and elapsed > self.nav_timeout_sec:
+            if effective_timeout_sec > 0.0 and elapsed > effective_timeout_sec:
                 failure_reason = (
-                    f"Nav2 task exceeded nav_timeout_sec={self.nav_timeout_sec:.1f}."
+                    f"Nav2 task exceeded nav_timeout_sec={effective_timeout_sec:.1f}."
                 )
                 self.get_logger().error(failure_reason)
                 try:
@@ -864,6 +908,136 @@ class VLNBridgeNodeLocal(Node):
             float(pose.pose.position.x) - float(self.latest_odom_x),
             float(pose.pose.position.y) - float(self.latest_odom_y),
         )
+
+    def _load_safe_occupancy_map(self) -> Optional[SimpleOccupancyMap]:
+        if not self.safe_map_validation_enabled:
+            return None
+        try:
+            occupancy_map = SimpleOccupancyMap.from_yaml(self.safe_map_yaml)
+        except Exception as exc:
+            self.get_logger().warning(f"Safe map validation disabled: {exc}")
+            return None
+
+        self.get_logger().info(
+            "Loaded safe occupancy map: "
+            f"{self.safe_map_yaml}, size={occupancy_map.width}x{occupancy_map.height}"
+        )
+        return occupancy_map
+
+    def _safe_goal_candidate(self, x: float, y: float, yaw: float) -> Tuple[float, float, float]:
+        if not self.safe_goal_enabled or self.occupancy_map is None:
+            return x, y, yaw
+
+        check = self.occupancy_map.check_pose(
+            name="goal",
+            x=x,
+            y=y,
+            yaw=yaw,
+            radius_m=self.safe_pose_check_radius_m,
+        )
+        if check.ok(self.safe_pose_min_free_ratio):
+            return x, y, yaw
+
+        nearest = self.occupancy_map.find_nearest_free_pose(
+            x=x,
+            y=y,
+            yaw=yaw,
+            radius_m=self.safe_pose_check_radius_m,
+            min_free_ratio=self.safe_pose_min_free_ratio,
+            max_search_m=self.safe_nearest_free_search_m,
+        )
+        if nearest is None:
+            self.get_logger().warning(
+                "Safe-goal check failed and no nearest free candidate was found: "
+                f"target=({x:.2f}, {y:.2f}), center={check.center_state}, "
+                f"free={check.free_ratio:.1%}."
+            )
+            return x, y, yaw
+
+        self.get_logger().warning(
+            "Safe-goal adjusted target: "
+            f"({x:.2f}, {y:.2f}) -> ({nearest.x:.2f}, {nearest.y:.2f}), "
+            f"old_center={check.center_state}, old_free={check.free_ratio:.1%}, "
+            f"new_free={nearest.free_ratio:.1%}."
+        )
+        return nearest.x, nearest.y, yaw
+
+    def _recover_safe_start_if_needed(self) -> Optional[Tuple[str, str]]:
+        if (
+            not self.safe_start_enabled
+            or self.occupancy_map is None
+            or self._safe_start_recovery_active
+        ):
+            return None
+        if self.latest_odom_x is None or self.latest_odom_y is None:
+            return None
+        if time.monotonic() - self.latest_odom_wall_time > 2.0:
+            return None
+
+        check = self.occupancy_map.check_pose(
+            name="safe_start",
+            x=float(self.latest_odom_x),
+            y=float(self.latest_odom_y),
+            yaw=0.0,
+            radius_m=self.safe_pose_check_radius_m,
+        )
+        if check.ok(self.safe_pose_min_free_ratio):
+            return None
+
+        nearest = self.occupancy_map.find_nearest_free_pose(
+            x=float(self.latest_odom_x),
+            y=float(self.latest_odom_y),
+            yaw=0.0,
+            radius_m=self.safe_pose_check_radius_m,
+            min_free_ratio=self.safe_pose_min_free_ratio,
+            max_search_m=self.safe_nearest_free_search_m,
+        )
+        if nearest is None:
+            reason = (
+                "Safe-start check failed and no nearest free candidate was found: "
+                f"current=({check.x:.2f}, {check.y:.2f}), center={check.center_state}, "
+                f"free={check.free_ratio:.1%}."
+            )
+            self.get_logger().warning(reason)
+            return "failed", reason
+
+        self.get_logger().warning(
+            "Safe-start recovery target: "
+            f"current=({check.x:.2f}, {check.y:.2f}), center={check.center_state}, "
+            f"free={check.free_ratio:.1%}; nearest=({nearest.x:.2f}, {nearest.y:.2f}), "
+            f"free={nearest.free_ratio:.1%}."
+        )
+        self._safe_start_recovery_active = True
+        try:
+            recovery_pose = self._build_pose(x=nearest.x, y=nearest.y, yaw=nearest.yaw)
+            return self._navigate_to_pose_once(
+                pose=recovery_pose,
+                attempt_index=1,
+                max_attempts=1,
+            )
+        finally:
+            self._safe_start_recovery_active = False
+
+    def _effective_nav_timeout_sec(self, pose: PoseStamped) -> float:
+        if not self.dynamic_timeout_enabled:
+            return self.nav_timeout_sec
+
+        distance = self._distance_from_latest_odom(pose)
+        if distance is None:
+            return self.nav_timeout_sec
+
+        dynamic_timeout = max(
+            self.dynamic_timeout_min_sec,
+            distance * max(0.0, self.dynamic_timeout_sec_per_m),
+        )
+        effective_timeout = max(self.nav_timeout_sec, dynamic_timeout)
+        if effective_timeout > self.nav_timeout_sec:
+            self.get_logger().info(
+                "Dynamic timeout expanded: "
+                f"distance={distance:.2f}m, base={self.nav_timeout_sec:.1f}s, "
+                f"effective={effective_timeout:.1f}s."
+            )
+        return effective_timeout
 
     def _recover_from_nav_stuck(self) -> None:
         if self.cmd_vel_pub is None:

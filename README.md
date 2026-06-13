@@ -414,5 +414,19 @@ docs/node7_ablation_report.md
 | Metric split | 7/15 | 11/15 | 7/15 | 7/15 |
 | Metric split + shelf confirmation | 11/15 | 11/15 | 11/15 | 11/15 |
 
+Node 7 还补充了 safe-start / safe-goal / dynamic timeout 扩展：
+
+* 导航前检查当前 odom 位姿在静态地图中的 free ratio，不安全时先移动到 nearest free candidate。
+* 发布 Nav2 goal 前检查目标位姿，不安全时替换为 nearby free candidate。
+* 根据 odom-to-goal 距离动态扩大 timeout，但不会低于显式配置的 `nav_timeout_sec`。
+
+离线验证见：
+
+```text
+data/node7_safe_navigation_checks_2026-06-13.csv
+```
+
+默认 plant/chair/shelf 目标均保持 unchanged；此前记录的 shelf 边缘起点 `(-6.762, 10.778)` 被检测为 free ratio 0.920，并给出 nearest free `(-6.727, 10.813)`；2026-06-12 的 occupied 起点 `(-1.061, -1.730)` 被检测为 occupied，并给出 nearest free `(-1.290, -1.465)`。
+
 
 </details>

@@ -1,0 +1,6 @@
+name,type,x,y,yaw,center_state,free_ratio,ok,nearest_free_x,nearest_free_y,nearest_free_ratio,adjustment_distance_m
+default_plant,goal,-0.43,-2.92,0.0,free,1.0,True,-0.43,-2.92,1.0,0.0
+default_chair,goal,-0.54,-0.69,1.57,free,1.0,True,-0.54,-0.69,1.0,0.0
+default_shelf_package_area,goal,-6.78,10.96,0.0,free,1.0,True,-6.78,10.96,1.0,0.0
+shelf_edge_start_2026_06_13,start,-6.762,10.778,0.36,free,0.92,False,-6.727,10.813,0.973,0.05
+occupied_start_2026_06_12,start,-1.061,-1.73,1.692,occupied,0.451,False,-1.29,-1.465,0.956,0.35
