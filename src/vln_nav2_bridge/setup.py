@@ -15,12 +15,14 @@ setup(
     zip_safe=True,
     maintainer="bluepoisons",
     maintainer_email="bluepoisons@example.com",
-    description="Local VLN to Nav2 bridge for Node 5.",
+    description="Local VLN to Nav2 bridge for Node 5/6.",
     license="MIT",
     tests_require=["pytest"],
     entry_points={
         "console_scripts": [
             "vln_node_local = vln_nav2_bridge.vln_node_local:main",
+            "node6_auto_trials = vln_nav2_bridge.node6_auto_trials:main",
+            "node6_map_preflight = vln_nav2_bridge.node6_map_preflight:main",
         ],
     },
 )

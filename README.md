@@ -1,7 +1,7 @@
 # ZhiruiSHEN-VLN
 
 <p align="center">
-  <a href="#zh">🇨🇳 中文</a> | <a href="#en">🇬🇧 English</a>
+  <a href="#zh">🇨🇳 中文</a>
 </p>
 
 重启电脑后可先参考环境快速恢复手册：[reset.md](reset.md)
@@ -192,185 +192,124 @@ Node 4 的职责不是离线写长文，而是在线感知与导航链路中的�
 
 注：上图展示了 Node 5 终端联调现场，包含指令接收、模型输出、坐标解析与导航执行链路。
 
+## 2026-06-12: Node 6 当前状态（Isaac Sim 实时视觉 -> 本地 Qwen -> Nav2）
 
+* **目标**：Node 6 已从 Node 5 的“文本指令到固定坐标”推进到“Isaac Sim 实时相机图像 + 本地视觉大模型 grounding + 语义地图 + Nav2 执行”的闭环验证。
+* **当前结论**：问题不是本地大模型没有启动。测试期间 Qwen worker 已通过 `ping` 健康检查并常驻 GPU；4-bit NF4 量化后显存占用约 `2.3 GB`，因此 12GB 显卡上仍剩约 5GB 是正常现象。
+* **当前进程状态**：自动评估结束后，Node 6 bridge / Qwen worker 已停止；Isaac Sim 仍在占用 GPU。后续重新测试时，启动 `vln_node_local` 会按默认 `inference_mode=server` 拉起常驻模型 worker。
+* **核心修复**：
+  * 新增 `src/vln_inference/run_inference_server.py`，将 Qwen 从每条指令临时加载改为常驻 worker。
+  * `vln_node_local.py` 默认使用 `server` 推理模式，并在 bridge ready 前检查模型健康状态。
+  * 关闭推理失败后的静默关键词兜底，避免“模型失败但看起来导航了”的误判。
+  * 增加 `nav_timeout_sec`，Nav2 卡住时会取消任务并写出 trial 结果。
+  * 修复 `chair beside the plant` 的目标解析优先级：优先使用模型输出的 `chair`，不再被原始指令里的 `plant` 覆盖。
 
-</details>
+### Node 6 自动评估结果
 
-<a id="en"></a>
+评估记录见 `logs/2026-06-12.md`，合并结果见 `data/node6_auto_trials_2026-06-12_combined.csv`。
 
-<details>
-<summary><b>🇬🇧 English Version</b></summary>
+| 指标 | 结果 |
+|---|---:|
+| 总测试数 | 15 |
+| 导航成功 | 5/15 |
+| 视觉目标可见 `visible=true` | 10/15 |
+| `visual_semantic_map` | 6/15 |
+| `visual_scan_failed` | 6/15 |
+| `visual_map_failed` | 3/15 |
+| Nav2 timeout | 1/15 |
+| fallback | 0/15 |
 
-## 2026-03-12: Node 1 Integration Completed
-* **Progress**: Successfully established the underlying communication bridge between Isaac Sim (Jazzy launcher environment) on the Windows host and ROS 2 inside WSL.
-* **Testing**: Successfully verified the physical movement of the robot by publishing to `/cmd_vel` via `teleop_twist_keyboard`.
-* **Demo**: Recorded a video demonstrating the successful integration, saved as `ROS 2_topic_stream.mp4`.
-* **Troubleshooting**: Resolved the FastDDS shared memory communication deadlock issue across the Windows/WSL subnet boundaries.
+| 指令类别 | 当前表现 | 主要原因 |
+|---|---|---|
+| plant / potted plant | 3/3 成功 | 多视角扫描后模型能看到 plant，并映射到语义地图坐标。 |
+| chair / black office chair | 2/2 成功 | 模型能正确识别近处 chair，并映射到 chair 坐标。 |
+| chair beside plant | 目标解析已修复，但导航失败 | 模型输出 `chair` 正确，坐标也修复为 chair；最新重跑显示 Nav2 planner 无法从当前位姿规划到 chair。 |
+| purple boxes / shelf | 视觉 grounding 已恢复 | `/cmd_vel` 扫描转向后模型能看到 purple boxes / shelf，但 Nav2 planner 无法从当前位姿规划到 shelf。 |
+| warehouse rack / package area / cart with boxes | 语义别名已补充 | 已映射到 shelf / package 候选区，后续需要修 Nav2 规划链路。 |
 
-## 2026-03-13: Node 2 Literature Review & Model Selection Completed
-* **Survey Scope**: In-depth review of 5 core VLN papers (2023–2026), focusing on perception, memory, and decision-making in continuous environments (VLN-CE).
-* **Key Papers**: Covering five technical dimensions — spatial mapping (BEVBert), memory efficiency (MapNav), end-to-end control (Uni-NaVid), progress monitoring (Progress-Think), and continual learning (CMMR-VLN).
-* **Model Selection**: Decided to build a **Hierarchical Semantics-Augmented VLA architecture (HSA-VLM)**, integrating an ASM-based memory layer and Uni-NaVid's streaming action decoder.
-* **Next Step**: Launch Node 3 — configure Habitat-Sim simulation environment and load pretrained weights.
+### 2026-06-12 TODO 执行结果
 
-## 2026-04-07: Node 3 Basic Navigation & Automated Testing Completed
+输出文件：
 
-### Environment Update: Migrating from WSL+Windows to Native Linux
-* **WSL cross-subnet bottleneck**: ROS 2 in WSL and Isaac Sim on Windows were on different subnets due to WSL2 NAT networking. In practice, high-frequency topics (especially `/tf` and point clouds) were unstable across subnet multicast, making Nav2 hard to keep stable.
-* **Native external-disk solution**: I moved to a clean Ubuntu 22.04 native system on an external SSD (USB-C direct connection). This removed virtualization overhead and made local Isaac Sim <-> ROS 2 communication much smoother.
+```text
+data/node6_trials_6_11.txt
+data/node6_auto_trials_2026-06-12_todo6_11_odom.csv
+```
 
-* **Native Linux troubleshooting notes**:
-  1. **NVIDIA driver black screen**: On first boot, mixed-GPU scheduling caused a black screen. Fixed by entering TTY, reinstalling NVIDIA proprietary drivers, and restoring CUDA.
-  2. **FastDDS SHM deadlock**: Frequent Nav2 restarts sometimes triggered `RTPS_TRANSPORT_SHM Error`. Clearing stale shared-memory ports with `rm -rf /dev/shm/fastrtps_port*` and restarting `ros2 daemon` solved it.
+| TODO | 状态 | 结果 |
+|---|---|---|
+| 1. 修 Nav2/local control 原地旋转和超时 | 部分完成 | visual scan 不再依赖 Nav2 `spin`，改为 `/cmd_vel` 原地转向；新增 odom 真实距离监控、stuck 检测、短恢复和重试。重跑显示剩余 blocker 是 Nav2 `GridBased` 无法规划路径，不是视觉扫描。 |
+| 2. 补语义地图别名 | 完成 | `warehouse rack`、`package area`、`cart with boxes`、`purple packages` 等已加入语义目标表。 |
+| 3. shelf/purple boxes 两阶段策略 | 完成 | 当前视野不可见但语义可解析时，会先导航到候选区，再重新 visual scan 确认。 |
+| 4. 保留 server 模式和禁用 fallback | 完成 | 默认 `inference_mode=server`、`allow_inference_fallback=false`；同时修复 ROS launch 字符串布尔值误读风险。 |
 
-### Testing Progress & Automated Evaluation
-* **Progress**: In the rebuilt native environment, AMCL localization and global/local planning ran successfully in our custom Warehouse Map.
-* **Automation setup**:
-  * Implemented a fully automated script based on `nav2_simple_commander`: `auto_test_node3.py`.
-  * Script location (click to open): [src/auto_test_node3.py](src/auto_test_node3.py)
-  * Selected 10 target points across safe map regions (X, Y in -3.0m to 4.0m).
-* **Result**: All 10 long-range navigation tests succeeded. Final success rate: **10/10 (100.0%)**.
-* Full log (click to open): [Node 3 experiment log](data/node3_experiment_log_20260407_202902.txt)
+本次重跑的关键现象：
 
-#### Node 3 Automated Test Table
+* `data/node6_auto_trials_2026-06-12_todo6_11_odom.csv` 记录到 Trial 4；因为 Trial 2-4 已重复同一个 Nav2 planner blocker，后续 Trial 5-6 未继续跑。
+* Qwen worker 正常启动，`allow_inference_fallback=False`。
+* `/cmd_vel` 扫描转向有效，未再出现旧的 `visual_scan_spin_failed`。
+* shelf / purple boxes 类目标可以被模型看到并解析到 `(-6.78, 10.96)`。
+* Nav2 日志反复出现 `GridBased: failed to create plan with tolerance 0.50`，chair 和 shelf 目标都无法从当前位姿生成全局路径。
+* 因此当前 blocker 已从“模型/视觉扫描/语义映射”转移到 Nav2 地图、定位或 costmap 规划链路。
 
-| Test ID | Target (X, Y) | Result |
-| --- | --- | --- |
-| 1 | (-3.0, -3.0) | Success |
-| 2 | (3.0, -3.0) | Success |
-| 3 | (3.0, 4.0) | Success |
-| 4 | (-3.0, 4.0) | Success |
-| 5 | (0.0, 0.0) | Success |
-| 6 | (-2.0, -1.0) | Success |
-| 7 | (2.0, 1.0) | Success |
-| 8 | (-1.0, 3.0) | Success |
-| 9 | (1.0, -2.0) | Success |
-| 10 | (0.0, 2.0) | Success |
+### Node 6 图像示例
 
-**Summary**: 10 successes, 0 failures, overall success rate **100.0%**.
+#### 成功样例：plant 可见并完成导航
+![Node 6 plant visible](assets/node6_plant_visible.png)
 
-## 2026-04-11: Node 4 Local VLM Inference & Visual Perception Test Completed
-* **Progress**: Successfully deployed **Qwen3-VL-2B-Instruct** locally in the native Linux environment and completed warehouse-scene visual understanding tests. The pipeline remained stable while Isaac Sim was running.
-* **Local deployment setup**:
-  * Environment: `isaaclab` Conda environment.
-  * Libraries: `transformers` and `bitsandbytes`.
-  * Optimization: 4-bit NF4 quantization with `bfloat16` compute.
-* **Observed performance (current laptop)**:
-  * Model-side VRAM usage around 1.5GB.
-  * Single-image inference latency around 1.2s.
-  * Stable coexistence with Isaac Sim + ROS 2 runtime.
+#### 成功样例：black office chair 可见并完成导航
+![Node 6 chair visible](assets/node6_chair_visible.png)
 
-### Why Node 4 uses 2B first instead of 8B
-Node 4 serves online perception in a closed-loop robotics system. The first priority is stable real-time behavior rather than maximum offline benchmark quality.
+#### 关系指令样例：`chair beside the plant`
+![Node 6 chair beside plant](assets/node6_chair_beside_plant.png)
 
-| Dimension | Qwen3-VL-2B-Instruct (current) | 8B-class model (evaluation) |
-| --- | --- | --- |
-| VRAM pressure | Controllable after 4-bit quantization | Much higher pressure, likely to compete with simulator |
-| Latency | Around 1.2s, acceptable for online use | Higher latency, hurts loop responsiveness |
-| Long-run stability | Easier to keep stable | More risk of OOM/performance jitter |
-| Engineering complexity | Straightforward integration | Requires more aggressive memory scheduling |
+注：该样例中模型目标已经正确指向 chair，语义坐标也已修复为 chair；剩余问题是 Nav2 执行超时。
 
-**Decision**: Use **Qwen3-VL-2B-Instruct** as the Node 4 online model in the current phase.
+#### 失败样例：purple boxes 未进入当前扫描视野
+![Node 6 purple boxes not visible](assets/node6_purple_boxes_not_visible.png)
 
-**Role of 8B in roadmap**:
-* Path A: Use 8B for offline quality benchmarking on hard cases.
-* Path B: Promote 8B to online inference after hardware upgrade or distributed deployment.
-* Path C: Keep 2B online and use 8B as a low-frequency verification model.
+注：该图显示扫描视角停在 plant/墙面附近，远处 shelf/purple boxes 没有进入视野，因此该类失败更接近主动感知与局部控制问题。
 
-### Test scope and findings
-* **Multimodal understanding**: Input warehouse screenshots and ask for object localization and spatial relations among robot, chair, plant, and purple boxes.
-* **Grounding quality**: The model consistently returned key relations such as “robot right of chair,” “plant left of chair,” and “purple boxes on the right shelf,” with no obvious spatial hallucinations.
-* **Engineering outcome**: Node 4 perception capability is ready for the next-stage bridge-node development.
+#### 修复前样例：package area 可见但语义别名缺失
+![Node 6 package area alias gap](assets/node6_package_area_alias_gap.png)
 
-#### Node 4 Screenshot and Inference Output
-![Node 4 Inference Result](assets/node4_inference_result.png)
+注：画面中货架、紫色箱子和小车都可见；该问题已通过补充 `package area`、`warehouse rack`、`cart with boxes` 等别名修复。
 
-Note: The screenshot shows real local inference output and validates usable spatial grounding in the warehouse scene.
+### Node 6 规划链路复查
 
-* **Next Step**: Start Node 5 and develop the ROS 2 Interface Bridge to convert natural-language outputs into Nav2-executable `Pose` targets.
+已继续检查 Node 6 的下一步任务，结论是：`GridBased` blocker 还没有完成闭环修复，但已经定位到当前最可疑原因。
 
-## 2026-04-11: Node 5 Bridge Node Integration Completed (Text Instruction -> Local VLM -> Nav2)
-* **Progress**: Node 5 is now fully implemented and tested. The pipeline successfully closes the loop from natural-language instruction to coordinate parsing and Nav2 navigation execution.
+新增工具：
 
-### Node 5 Code-Level Changes
+```text
+ros2 run vln_nav2_bridge node6_map_preflight
+```
 
-#### 1) Main node initialization and Nav2 lifecycle (`src/vln_nav2_bridge/vln_nav2_bridge/vln_node_local.py`)
-* Replaced the original blocking `waitUntilNav2Active()` call inside `__init__` with an asynchronous timer-based initialization flow.
-  * Added `_on_init_timer_callback()` as the deferred startup entry point.
-  * The node now enters `rclpy.spin()` first, and only then initializes `BasicNavigator`, which avoids clock-message starvation.
-* Fixed simulation-time synchronization:
-  * After creating `BasicNavigator()`, the node explicitly sets:
-    ```python
-    use_sim_time_param = Parameter('use_sim_time', Parameter.Type.BOOL, True)
-    self.navigator.set_parameters([use_sim_time_param])
-    ```
-* Fixed parameter declaration conflicts:
-  * Removed the redundant `declare_parameter("use_sim_time")` call and only read the parameter value instead.
-* Updated the safe-boundary configuration:
-  * Replaced the old shared XY bounds with four axis-specific limits:
-    * `safe_min_x = -8.0`
-    * `safe_max_x = 10.0`
-    * `safe_min_y = -12.0`
-    * `safe_max_y = 15.0`
+该工具会读取 `data/warehouse_map.yaml/png`，检查当前 `/chassis/odom` 和默认语义目标是否落在可通行栅格上。
 
-#### 2) Model wrapper and subprocess invocation (`src/vln_nav2_bridge/vln_nav2_bridge/qwen_model_wrapper.py`)
-* Kept subprocess mode as the default inference path to avoid Python version conflicts between ROS 2 Humble and `isaaclab`.
-* Added a hard CPU-only subprocess path:
-  * Passed `--force-cpu` to the CLI.
-  * Set the subprocess environment variable:
-    ```python
-    env["CUDA_VISIBLE_DEVICES"] = "-1"
-    ```
-* Added a bitsandbytes compatibility patch to drop unsupported `_is_hf_initialized` arguments.
+当前现场复查结果：
 
-#### 3) Inference CLI stability and compatibility (`src/vln_inference/run_inference_cli.py`)
-* Added the `--force-cpu` flag and a pure CPU loading path:
-  * `device_map={"": "cpu"}`
-  * `torch_dtype=torch.float32`
-  * `low_cpu_mem_usage=True`
-* Kept the 4-bit loading path, but added a runtime patch for the older `Params4bit` constructor mismatch.
-* Removed hard-coded `.to("cuda")` input placement.
-  * Inputs are now placed according to the active model device or kept on CPU when needed.
-* Updated the prompt to include map memory so that the model can output more consistent target descriptions.
+```text
+current_odom:/chassis/odom = (-1.061, -1.730, yaw=1.692)
+map pixel=(181, 414), center=occupied
+0.30 m 半径内 free=45.1%, occupied=54.9%
+nearest free candidate ~= (-1.379, -1.584)
+```
 
-#### 4) Text-to-pose conversion strategy (`src/vln_nav2_bridge/vln_nav2_bridge/text_to_pose_converter.py`)
-* Reordered the parsing priority:
-  1. Known instruction keyword rules (`_fallback_from_instruction`)
-  2. JSON pose parsing (`_parse_json_pose`)
-  3. Generic fallback matching (`_fallback_from_text`)
-* Updated the coordinate rules to match the current warehouse map:
-  * `purple box / purple boxes / right shelf / shelf -> (-6.78, 10.96, 0.0)`
-  * `plant -> (-0.43, -2.92, 0.0)`
-  * `chair / office chair -> (-0.54, -0.69, 1.57)`
-* Changed the safety check to axis-specific bounds:
-  * `x in [-8.0, 10.0]`
-  * `y in [-12.0, 15.0]`
+默认语义目标检查结果：
 
-### Node 5 Issues and Fixes
-1. **Nav2 activation hang**
-   * Fix: switched to asynchronous initialization and explicitly synchronized `BasicNavigator` with simulation time.
-2. **ParameterAlreadyDeclaredException**
-   * Fix: removed the duplicate `use_sim_time` declaration.
-3. **bitsandbytes / transformers compatibility error**
-   * Fix: added a small constructor compatibility patch.
-4. **`meta tensors` runtime error**
-   * Fix: forced a CPU-only inference path with `--force-cpu` and `CUDA_VISIBLE_DEVICES=-1`.
-5. **Coordinate mismatch for known targets**
-   * Fix: made keyword rules higher priority than JSON output and updated the map coordinate table.
+```text
+plant (-0.43, -2.92)              OK
+chair (-0.54, -0.69)              OK
+shelf/package_area (-6.78, 10.96) OK
+```
 
-### Node 5 Validation Result
-* The node now reaches `Node ready` reliably and subscribes to `/vln_instruction`.
-* Instructions such as `Go to the right shelf with purple boxes` are resolved to the expected target and published to Nav2.
-* When inference fails, the fallback path keeps navigation running instead of breaking the pipeline.
+因此本轮失败不应优先归因到 chair/shelf 目标中心贴障碍；更直接的问题是机器人当前 map 位姿落在占据栅格里。下一轮重跑前应先处理 TF/定位链路：
 
-#### Node 5 Result Screenshot
-![Node 5 Result](assets/node5_complete.png)
+1. 使用 Nav2/AMCL 时不要同时运行静态 `map -> odom`；`map -> odom` 应由 AMCL 发布。
+2. 启动 Nav2 后先运行 `node6_map_preflight`，确认当前机器人位姿是 `[OK]`。
+3. 再在 RViz 中用 `Nav2 Goal` 单独验证 `(-0.54, -0.69)` 和 `(-6.78, 10.96)`。
+4. Nav2 单独验证通过后，再用 `data/node6_trials_6_11.txt` 重跑 Node 6。
 
-Note: The screenshot shows the live terminal integration result, including instruction reception, model output, pose resolution, and navigation execution.
-
-### Simulation & Sensor Troubleshooting
-1. **Clock mismatch causing TF errors**: RViz2 initially used system wall time while Isaac Sim published simulation time, so TF messages were treated as expired. Setting `--ros-args -p use_sim_time:=True` fixed the timeline mismatch.
-2. **Broken lidar pipeline, AMCL could not run**: AMCL depends on `/scan`, but the saved `.usd` scene kept an invalid absolute `renderProductPath`, which broke the 2D lidar pipeline after restart.
-3. **Practical fix: project 3D lidar into 2D scan**: Instead of patching fragile graph links, I converted `/front_3d_lidar/lidar_points` to `/scan` using `ros-humble-pointcloud-to-laserscan`, which restored stable AMCL input.
 
 </details>

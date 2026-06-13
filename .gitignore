@@ -1,0 +1,67 @@
+# Python bytecode / caches
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+coverage.xml
+htmlcov/
+
+# Python packaging / environments
+.venv/
+venv/
+env/
+ENV/
+*.egg-info/
+.eggs/
+dist/
+*.egg
+pip-wheel-metadata/
+
+# ROS 2 / colcon generated outputs
+build/
+install/
+log/
+.colcon/
+
+# Runtime-generated data / local experiment outputs
+data/runtime/
+data/tmp/
+data/cache/
+*.bag
+*.bag.active
+*.db3
+*.sqlite3
+*.mcap
+
+# Model checkpoints / local large artifacts
+checkpoints/
+models/
+weights/
+*.ckpt
+*.pt
+*.pth
+*.onnx
+*.safetensors
+
+# Environment / secrets
+.env
+.env.*
+!.env.example
+
+# Logs and temporary files
+*.log
+*.tmp
+*.temp
+*.swp
+*.swo
+*~
+
+# OS / editor noise
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+log/

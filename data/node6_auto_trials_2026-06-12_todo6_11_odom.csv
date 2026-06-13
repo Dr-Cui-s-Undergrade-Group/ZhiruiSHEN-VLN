@@ -1,0 +1,37 @@
+trial_id,timestamp,duration_sec,instruction,image_path,model_output,model_target,visible,confidence,parse_method,target_x,target_y,target_yaw,final_pose_source,final_x,final_y,final_yaw,final_error_m,within_success_radius,nav_result,failure_reason
+1,2026-06-12 13:00:42,166.898,Navigate to the chair beside the plant.,/home/bluepoisons/Desktop/FURP/VLN/ZhiruiSHEN-VLN/data/runtime/trial_images/trial_0008_20260612_125902_047901346_scan_08_navigate_to_the_chair_beside_the_plant.png,"```json
+{
+  ""target"": ""chair"",
+  ""visible"": false,
+  ""confidence"": 0.0,
+  ""horizontal_position"": ""unknown"",
+  ""evidence"": ""The image shows a warehouse interior with shelves, a forklift, and a small cart with boxes. There is no chair visible in the image. The user's instruction is to navigate to a chair beside a plant, but no such object is present in the image.""
+}
+```",chair,False,0.0,semantic_explore_failed,-0.54,-0.69,1.57,odom,-1.056,-1.718,1.683,1.15,False,stuck,Nav2 made no meaningful progress for 45.0s (best_distance=1.15m).
+2,2026-06-12 13:02:23,98.37,Go to the purple boxes.,/home/bluepoisons/Desktop/FURP/VLN/ZhiruiSHEN-VLN/data/runtime/trial_images/trial_0009_20260612_130044_956760979_scan_01_go_to_the_purple_boxes.png,"```json
+{
+  ""target"": ""purple boxes"",
+  ""visible"": true,
+  ""confidence"": 0.95,
+  ""horizontal_position"": ""left"",
+  ""evidence"": ""The purple boxes are visible on the lower shelves of the warehouse racks on the left side of the image.""
+}
+```",purple boxes,True,0.95,visual_semantic_map,-6.78,10.96,0.0,odom,-1.058,-1.719,1.686,13.91,False,stuck,Nav2 made no meaningful progress for 45.0s (best_distance=13.91m).
+3,2026-06-12 13:04:05,99.291,Move to the right shelf with purple boxes.,/home/bluepoisons/Desktop/FURP/VLN/ZhiruiSHEN-VLN/data/runtime/trial_images/trial_0010_20260612_130226_212655061_scan_01_move_to_the_right_shelf_with_purple_boxe.png,"```json
+{
+  ""target"": ""right shelf with purple boxes"",
+  ""visible"": true,
+  ""confidence"": 0.95,
+  ""horizontal_position"": ""right"",
+  ""evidence"": ""The right shelf in the image is visible and contains purple boxes. The shelf is positioned on the right side of the warehouse, and the boxes are clearly visible on the shelves.""
+}
+```",right shelf with purple boxes,True,0.95,visual_semantic_map,-6.78,10.96,0.0,odom,-1.059,-1.719,1.688,13.91,False,stuck,Nav2 made no meaningful progress for 45.0s (best_distance=13.91m).
+4,2026-06-12 13:05:48,99.708,Navigate to the shelf area containing purple packages.,/home/bluepoisons/Desktop/FURP/VLN/ZhiruiSHEN-VLN/data/runtime/trial_images/trial_0011_20260612_130408_736470764_scan_01_navigate_to_the_shelf_area_containing_pu.png,"```json
+{
+  ""target"": ""shelf area containing purple packages"",
+  ""visible"": true,
+  ""confidence"": 0.95,
+  ""horizontal_position"": ""left"",
+  ""evidence"": ""The shelf area on the left side of the image contains multiple purple packages stacked on pallets. These packages are clearly visible and are located on the upper and lower shelves of the metal shelving units.""
+}
+```",shelf area containing purple packages,True,0.95,visual_semantic_map,-6.78,10.96,0.0,odom,-1.06,-1.719,1.69,13.91,False,stuck,Nav2 made no meaningful progress for 45.0s (best_distance=13.91m).

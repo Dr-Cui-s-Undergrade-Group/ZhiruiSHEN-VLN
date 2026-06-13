@@ -1,16 +1,24 @@
 #!/usr/bin/env python3
+import csv
 import io
+import json
 import math
 import os
+import re
+import shutil
+import threading
 import time
-from typing import Optional
+from typing import Optional, Tuple
 
 import rclpy
+from rclpy.callback_groups import MutuallyExclusiveCallbackGroup, ReentrantCallbackGroup
+from rclpy.executors import MultiThreadedExecutor
 from rclpy.node import Node
 from rclpy.parameter import Parameter
+from nav_msgs.msg import Odometry
 from sensor_msgs.msg import CompressedImage, Image
 from std_msgs.msg import String
-from geometry_msgs.msg import PoseStamped
+from geometry_msgs.msg import PoseStamped, Twist
 from nav2_simple_commander.robot_navigator import BasicNavigator, TaskResult
 
 from .qwen_model_wrapper import QwenVLWrapper
@@ -42,6 +50,7 @@ class VLNBridgeNodeLocal(Node):
             "/home/bluepoisons/Desktop/FURP/VLN/ZhiruiSHEN-VLN/data/test_samples/warehouse_photo1.png",
         )
         self.declare_parameter("instruction_topic", "/vln_instruction")
+        self.declare_parameter("odom_topic", "/chassis/odom")
         self.declare_parameter("goal_frame", "map")
         self.declare_parameter("max_new_tokens", 256)
         self.declare_parameter("dry_run", False)
@@ -49,48 +58,162 @@ class VLNBridgeNodeLocal(Node):
         self.declare_parameter("safe_max_x", 10.0)
         self.declare_parameter("safe_min_y", -12.0)
         self.declare_parameter("safe_max_y", 15.0)
-        self.declare_parameter("inference_mode", "subprocess")
+        self.declare_parameter("nav_timeout_sec", 240.0)
+        self.declare_parameter("nav_feedback_log_interval_sec", 5.0)
+        self.declare_parameter("inference_mode", "server")
         self.declare_parameter("conda_env", "isaaclab")
+        self.declare_parameter(
+            "model_python_executable",
+            "/home/bluepoisons/miniconda3/envs/isaaclab/bin/python",
+        )
         self.declare_parameter("force_cpu", False)
-        self.declare_parameter("gpu_device", "0")
+        try:
+            self.declare_parameter("gpu_device", "0")
+        except Exception:
+            self.declare_parameter("gpu_device", 0)
+        try:
+            self.declare_parameter("model_startup_timeout_sec", 300.0)
+        except Exception:
+            self.declare_parameter("model_startup_timeout_sec", 300)
+        try:
+            self.declare_parameter("inference_request_timeout_sec", 180.0)
+        except Exception:
+            self.declare_parameter("inference_request_timeout_sec", 180)
+        self.declare_parameter("allow_inference_fallback", False)
         self.declare_parameter("image_topic", "")
         self.declare_parameter("compressed_image_topic", "")
         self.declare_parameter(
             "live_image_path",
             "/home/bluepoisons/Desktop/FURP/VLN/ZhiruiSHEN-VLN/data/runtime/latest_camera.png",
         )
+        self.declare_parameter(
+            "live_image_snapshot_dir",
+            "/home/bluepoisons/Desktop/FURP/VLN/ZhiruiSHEN-VLN/data/runtime/trial_images",
+        )
         self.declare_parameter("image_timeout_sec", 5.0)
         self.declare_parameter("require_fresh_image", False)
         self.declare_parameter("live_image_save_interval_sec", 0.5)
+        self.declare_parameter("visual_scan_enabled", True)
+        self.declare_parameter("visual_scan_steps", 8)
+        self.declare_parameter("visual_scan_step_rad", math.pi / 4.0)
+        self.declare_parameter("visual_scan_settle_sec", 1.0)
+        self.declare_parameter("visual_scan_min_confidence", 0.6)
+        self.declare_parameter("visual_scan_spin_time_allowance_sec", 15.0)
+        self.declare_parameter("visual_scan_spin_mode", "cmd_vel")
+        self.declare_parameter("visual_scan_angular_speed_rad_s", 0.35)
+        self.declare_parameter("cmd_vel_topic", "/cmd_vel")
+        self.declare_parameter("semantic_exploration_enabled", True)
+        self.declare_parameter("clear_costmaps_before_nav", True)
+        self.declare_parameter("nav_retry_on_stuck", True)
+        self.declare_parameter("nav_max_retries", 1)
+        self.declare_parameter("nav_accept_distance_m", 0.30)
+        self.declare_parameter("nav_accept_distance_hold_sec", 2.0)
+        self.declare_parameter("nav_stuck_timeout_sec", 45.0)
+        self.declare_parameter("nav_stuck_min_progress_m", 0.15)
+        self.declare_parameter("nav_stuck_recovery_backup_speed_m_s", -0.10)
+        self.declare_parameter("nav_stuck_recovery_backup_duration_sec", 1.0)
+        self.declare_parameter("nav_stuck_recovery_turn_speed_rad_s", 0.35)
+        self.declare_parameter("nav_stuck_recovery_turn_duration_sec", 1.0)
+        self.declare_parameter(
+            "trial_log_path",
+            "/home/bluepoisons/Desktop/FURP/VLN/ZhiruiSHEN-VLN/data/node6_trials.csv",
+        )
         self.declare_parameter(
             "inference_script_path",
             "/home/bluepoisons/Desktop/FURP/VLN/ZhiruiSHEN-VLN/src/vln_inference/run_inference_cli.py",
+        )
+        self.declare_parameter(
+            "server_script_path",
+            "/home/bluepoisons/Desktop/FURP/VLN/ZhiruiSHEN-VLN/src/vln_inference/run_inference_server.py",
         )
 
         # ============ Read all parameters ============
         self.model_path = self.get_parameter("model_path").value
         self.image_path = self.get_parameter("image_path").value
         self.instruction_topic = self.get_parameter("instruction_topic").value
+        self.odom_topic = self.get_parameter("odom_topic").value
         self.goal_frame = self.get_parameter("goal_frame").value
         self.max_new_tokens = int(self.get_parameter("max_new_tokens").value)
-        self.dry_run = bool(self.get_parameter("dry_run").value)
+        self.dry_run = self._as_bool(self.get_parameter("dry_run").value)
         self.safe_min_x = float(self.get_parameter("safe_min_x").value)
         self.safe_max_x = float(self.get_parameter("safe_max_x").value)
         self.safe_min_y = float(self.get_parameter("safe_min_y").value)
         self.safe_max_y = float(self.get_parameter("safe_max_y").value)
+        self.nav_timeout_sec = float(self.get_parameter("nav_timeout_sec").value)
+        self.nav_feedback_log_interval_sec = float(
+            self.get_parameter("nav_feedback_log_interval_sec").value
+        )
         self.inference_mode = self.get_parameter("inference_mode").value
         self.conda_env = self.get_parameter("conda_env").value
-        self.force_cpu = bool(self.get_parameter("force_cpu").value)
-        self.gpu_device = self.get_parameter("gpu_device").value
+        self.model_python_executable = self.get_parameter("model_python_executable").value
+        self.force_cpu = self._as_bool(self.get_parameter("force_cpu").value)
+        self.gpu_device = str(self.get_parameter("gpu_device").value)
+        self.model_startup_timeout_sec = float(
+            self.get_parameter("model_startup_timeout_sec").value
+        )
+        self.inference_request_timeout_sec = float(
+            self.get_parameter("inference_request_timeout_sec").value
+        )
+        self.allow_inference_fallback = self._as_bool(
+            self.get_parameter("allow_inference_fallback").value
+        )
         self.image_topic = self.get_parameter("image_topic").value
         self.compressed_image_topic = self.get_parameter("compressed_image_topic").value
         self.live_image_path = self.get_parameter("live_image_path").value
+        self.live_image_snapshot_dir = self.get_parameter("live_image_snapshot_dir").value
         self.image_timeout_sec = float(self.get_parameter("image_timeout_sec").value)
-        self.require_fresh_image = bool(self.get_parameter("require_fresh_image").value)
+        self.require_fresh_image = self._as_bool(self.get_parameter("require_fresh_image").value)
         self.live_image_save_interval_sec = float(
             self.get_parameter("live_image_save_interval_sec").value
         )
+        self.visual_scan_enabled = self._as_bool(self.get_parameter("visual_scan_enabled").value)
+        self.visual_scan_steps = max(1, int(self.get_parameter("visual_scan_steps").value))
+        self.visual_scan_step_rad = float(self.get_parameter("visual_scan_step_rad").value)
+        self.visual_scan_settle_sec = float(self.get_parameter("visual_scan_settle_sec").value)
+        self.visual_scan_min_confidence = float(
+            self.get_parameter("visual_scan_min_confidence").value
+        )
+        self.visual_scan_spin_time_allowance_sec = float(
+            self.get_parameter("visual_scan_spin_time_allowance_sec").value
+        )
+        self.visual_scan_spin_mode = str(
+            self.get_parameter("visual_scan_spin_mode").value
+        ).strip().lower()
+        self.visual_scan_angular_speed_rad_s = float(
+            self.get_parameter("visual_scan_angular_speed_rad_s").value
+        )
+        self.cmd_vel_topic = self.get_parameter("cmd_vel_topic").value
+        self.semantic_exploration_enabled = self._as_bool(
+            self.get_parameter("semantic_exploration_enabled").value
+        )
+        self.clear_costmaps_before_nav = self._as_bool(
+            self.get_parameter("clear_costmaps_before_nav").value
+        )
+        self.nav_retry_on_stuck = self._as_bool(self.get_parameter("nav_retry_on_stuck").value)
+        self.nav_max_retries = max(0, int(self.get_parameter("nav_max_retries").value))
+        self.nav_accept_distance_m = float(self.get_parameter("nav_accept_distance_m").value)
+        self.nav_accept_distance_hold_sec = float(
+            self.get_parameter("nav_accept_distance_hold_sec").value
+        )
+        self.nav_stuck_timeout_sec = float(self.get_parameter("nav_stuck_timeout_sec").value)
+        self.nav_stuck_min_progress_m = float(
+            self.get_parameter("nav_stuck_min_progress_m").value
+        )
+        self.nav_stuck_recovery_backup_speed_m_s = float(
+            self.get_parameter("nav_stuck_recovery_backup_speed_m_s").value
+        )
+        self.nav_stuck_recovery_backup_duration_sec = float(
+            self.get_parameter("nav_stuck_recovery_backup_duration_sec").value
+        )
+        self.nav_stuck_recovery_turn_speed_rad_s = float(
+            self.get_parameter("nav_stuck_recovery_turn_speed_rad_s").value
+        )
+        self.nav_stuck_recovery_turn_duration_sec = float(
+            self.get_parameter("nav_stuck_recovery_turn_duration_sec").value
+        )
+        self.trial_log_path = self.get_parameter("trial_log_path").value
         self.inference_script_path = self.get_parameter("inference_script_path").value
+        self.server_script_path = self.get_parameter("server_script_path").value
 
         # ============ Initialize model and converter (lightweight, no blocking) ============
         self.model = QwenVLWrapper(
@@ -99,8 +222,11 @@ class VLNBridgeNodeLocal(Node):
             mode=self.inference_mode,
             conda_env=self.conda_env,
             inference_script_path=self.inference_script_path,
+            server_script_path=self.server_script_path,
+            python_executable=self.model_python_executable,
             force_cpu=self.force_cpu,
             gpu_device=self.gpu_device,
+            request_timeout_sec=self.inference_request_timeout_sec,
         )
         self.converter = TextToPoseConverter(
             min_x=self.safe_min_x,
@@ -114,19 +240,42 @@ class VLNBridgeNodeLocal(Node):
         # Without this, /clock messages cannot be processed while waitUntilNav2Active() blocks.
         self.navigator = None
         self.goal_pub = None
+        self.result_pub = None
+        self.cmd_vel_pub = None
         self.sub = None
         self.image_sub = None
         self.compressed_image_sub = None
+        self.odom_sub = None
         self.latest_image_path = None
         self.latest_image_wall_time = 0.0
+        self.latest_odom_x = None
+        self.latest_odom_y = None
+        self.latest_odom_wall_time = 0.0
         self.last_image_save_wall_time = 0.0
+        self.trial_image_counter = 0
+        self.image_save_lock = threading.Lock()
         self.nav2_initialized = False
+        self.instruction_callback_group = MutuallyExclusiveCallbackGroup()
+        self.image_callback_group = ReentrantCallbackGroup()
+        self._ensure_live_image_dirs()
 
         # Single-shot timer: runs once after node starts spinning, then destroys itself
-        self._init_timer = self.create_timer(0.1, self._on_init_timer_callback)
+        self._init_timer = self.create_timer(
+            0.1,
+            self._on_init_timer_callback,
+            callback_group=self.instruction_callback_group,
+        )
         self.get_logger().info(
             "Node initialized (fast path). Nav2 setup will happen asynchronously..."
         )
+
+    @staticmethod
+    def _as_bool(value) -> bool:
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, str):
+            return value.strip().lower() in ("1", "true", "yes", "on")
+        return bool(value)
 
     def _on_init_timer_callback(self) -> None:
         """
@@ -154,29 +303,52 @@ class VLNBridgeNodeLocal(Node):
             # self.navigator.waitUntilNav2Active()
             self.get_logger().info("Nav2 is active.")
 
-            # Create publisher and subscription AFTER Nav2 is confirmed active
+            self.get_logger().info(
+                f"Starting Qwen inference backend: mode={self.inference_mode}, "
+                f"force_cpu={self.force_cpu}, gpu_device={self.gpu_device}"
+            )
+            self.model.start(timeout_sec=self.model_startup_timeout_sec)
+            self.get_logger().info("Qwen inference backend is ready.")
+
+            # Create publisher and subscriptions only after the VLM backend is healthy.
             self.goal_pub = self.create_publisher(PoseStamped, "/vln_goal_pose", 10)
+            self.result_pub = self.create_publisher(String, "/vln_trial_result", 10)
+            self.cmd_vel_pub = self.create_publisher(Twist, self.cmd_vel_topic, 10)
             self.sub = self.create_subscription(
                 String,
                 self.instruction_topic,
                 self._on_instruction,
                 10,
+                callback_group=self.instruction_callback_group,
+            )
+            self.odom_sub = self.create_subscription(
+                Odometry,
+                self.odom_topic,
+                self._on_odom,
+                10,
+                callback_group=self.image_callback_group,
             )
             self._setup_image_subscriptions()
 
             self.nav2_initialized = True
+            self.destroy_timer(self._init_timer)
             self.get_logger().info(
                 "Node ready. "
                 f"Listening on {self.instruction_topic}. "
                 f"dry_run={self.dry_run}, inference_mode={self.inference_mode}, "
-                f"force_cpu={self.force_cpu}, gpu_device={self.gpu_device}"
+                f"force_cpu={self.force_cpu}, gpu_device={self.gpu_device}, "
+                f"allow_inference_fallback={self.allow_inference_fallback}, "
+                f"visual_scan_enabled={self.visual_scan_enabled}, "
+                f"visual_scan_steps={self.visual_scan_steps}, "
+                f"visual_scan_spin_mode={self.visual_scan_spin_mode}, "
+                f"semantic_exploration_enabled={self.semantic_exploration_enabled}, "
+                f"odom_topic={self.odom_topic}, "
+                f"nav_retry_on_stuck={self.nav_retry_on_stuck}, "
+                f"nav_max_retries={self.nav_max_retries}"
             )
 
         except Exception as exc:
             self.get_logger().error(f"Nav2 initialization failed: {exc}. Retrying...")
-        finally:
-            # Destroy this timer after first attempt
-            self.destroy_timer(self._init_timer)
 
     def _on_instruction(self, msg: String) -> None:
         # Safety check: wait for Nav2 to be ready before processing
@@ -193,22 +365,195 @@ class VLNBridgeNodeLocal(Node):
 
         self.get_logger().info(f"Received instruction: {instruction}")
 
-        try:
-            image_path = self._get_inference_image_path()
-            model_output = self.model.infer_goal_text(
-                instruction=instruction,
-                image_path=image_path,
-            )
-        except Exception as exc:
-            self.get_logger().error(f"Model inference failed: {exc}")
-            self.get_logger().info("Using deterministic keyword fallback.")
-            model_output = instruction
+        image_path = ""
+        model_output = ""
+        x = y = yaw = 0.0
+        method = "failed"
+        nav_result = "not_started"
+        failure_reason = ""
+        model_json = None
+        started_at = time.time()
+        semantic_explored = False
 
-        self.get_logger().info(f"Model output: {model_output}")
-        parsed = self.converter.convert(instruction=instruction, model_output=model_output)
-        if not parsed.get("ok"):
-            self.get_logger().warning(f"Conversion failed: {parsed.get('reason')}")
-            return
+        if self.visual_scan_enabled:
+            scan_result = self._visual_scan_for_target(instruction=instruction)
+            image_path = str(scan_result.get("image_path", ""))
+            model_output = str(scan_result.get("model_output", ""))
+            model_json = scan_result.get("model_json")
+            method = str(scan_result.get("method", "visual_scan"))
+
+            if not scan_result.get("ok"):
+                exploration_result = self._try_semantic_exploration(
+                    instruction=instruction,
+                    scan_result=scan_result,
+                )
+                if exploration_result.get("attempted"):
+                    x = float(exploration_result.get("x", 0.0))
+                    y = float(exploration_result.get("y", 0.0))
+                    yaw = float(exploration_result.get("yaw", 0.0))
+
+                    if not exploration_result.get("ok"):
+                        failure_reason = str(
+                            exploration_result.get("reason", "semantic exploration failed")
+                        )
+                        result_payload = self._build_trial_result(
+                            instruction=instruction,
+                            image_path=image_path,
+                            model_output=model_output,
+                            model_json=model_json if isinstance(model_json, dict) else None,
+                            parse_method="semantic_explore_failed",
+                            x=x,
+                            y=y,
+                            yaw=yaw,
+                            nav_result=str(exploration_result.get("nav_result", "failed")),
+                            failure_reason=failure_reason,
+                            started_at=started_at,
+                        )
+                        self._publish_and_log_result(result_payload)
+                        return
+
+                    semantic_explored = True
+                    scan_result = self._visual_scan_for_target(instruction=instruction)
+                    image_path = str(scan_result.get("image_path", image_path))
+                    model_output = str(scan_result.get("model_output", model_output))
+                    model_json = scan_result.get("model_json", model_json)
+                    method = str(scan_result.get("method", "visual_scan"))
+
+                    if not scan_result.get("ok"):
+                        failure_reason = (
+                            "semantic_explore_confirm_failed: "
+                            f"{scan_result.get('reason', 'Target not visible.')}"
+                        )
+                        result_payload = self._build_trial_result(
+                            instruction=instruction,
+                            image_path=image_path,
+                            model_output=model_output,
+                            model_json=model_json if isinstance(model_json, dict) else None,
+                            parse_method="semantic_explore_visual_scan_failed",
+                            x=x,
+                            y=y,
+                            yaw=yaw,
+                            nav_result="failed",
+                            failure_reason=failure_reason,
+                            started_at=started_at,
+                        )
+                        self._publish_and_log_result(result_payload)
+                        return
+                else:
+                    failure_reason = str(scan_result.get("reason", "Target not visible."))
+                    result_payload = self._build_trial_result(
+                        instruction=instruction,
+                        image_path=image_path,
+                        model_output=model_output,
+                        model_json=model_json if isinstance(model_json, dict) else None,
+                        parse_method=method,
+                        x=0.0,
+                        y=0.0,
+                        yaw=0.0,
+                        nav_result="failed",
+                        failure_reason=failure_reason,
+                        started_at=started_at,
+                    )
+                    self._publish_and_log_result(result_payload)
+                    return
+
+            if not scan_result.get("ok"):
+                failure_reason = str(scan_result.get("reason", "Target not visible."))
+                result_payload = self._build_trial_result(
+                    instruction=instruction,
+                    image_path=image_path,
+                    model_output=model_output,
+                    model_json=model_json if isinstance(model_json, dict) else None,
+                    parse_method=method,
+                    x=0.0,
+                    y=0.0,
+                    yaw=0.0,
+                    nav_result="failed",
+                    failure_reason=failure_reason,
+                    started_at=started_at,
+                )
+                self._publish_and_log_result(result_payload)
+                return
+
+            target_name = ""
+            if isinstance(model_json, dict):
+                target_name = str(model_json.get("target", ""))
+            parsed = self.converter.resolve_named_target(
+                instruction=instruction,
+                model_target=target_name,
+            )
+            if not parsed.get("ok"):
+                self.get_logger().warning(
+                    f"Visual target was found, but map resolution failed: {parsed.get('reason')}"
+                )
+                result_payload = self._build_trial_result(
+                    instruction=instruction,
+                    image_path=image_path,
+                    model_output=model_output,
+                    model_json=model_json if isinstance(model_json, dict) else None,
+                    parse_method="visual_map_failed",
+                    x=0.0,
+                    y=0.0,
+                    yaw=0.0,
+                    nav_result="failed",
+                    failure_reason=str(parsed.get("reason")),
+                    started_at=started_at,
+                )
+                self._publish_and_log_result(result_payload)
+                return
+
+            if semantic_explored:
+                parsed["method"] = f"semantic_explore_then_{parsed.get('method', 'visual_semantic_map')}"
+        else:
+            try:
+                image_path = self._get_inference_image_path(instruction=instruction)
+                model_output = self.model.infer_goal_text(
+                    instruction=instruction,
+                    image_path=image_path,
+                )
+            except Exception as exc:
+                self.get_logger().error(f"Model inference failed: {exc}")
+                failure_reason = f"inference_failed: {exc}"
+                if not self.allow_inference_fallback:
+                    result_payload = self._build_trial_result(
+                        instruction=instruction,
+                        image_path=image_path,
+                        model_output=model_output,
+                        model_json=None,
+                        parse_method="inference_failed",
+                        x=0.0,
+                        y=0.0,
+                        yaw=0.0,
+                        nav_result="failed",
+                        failure_reason=failure_reason,
+                        started_at=started_at,
+                    )
+                    self._publish_and_log_result(result_payload)
+                    return
+
+                self.get_logger().info("Using deterministic keyword fallback.")
+                model_output = instruction
+
+            self.get_logger().info(f"Model output: {model_output}")
+            model_json = self.converter.parse_model_json(model_output)
+            parsed = self.converter.convert(instruction=instruction, model_output=model_output)
+            if not parsed.get("ok"):
+                self.get_logger().warning(f"Conversion failed: {parsed.get('reason')}")
+                result_payload = self._build_trial_result(
+                    instruction=instruction,
+                    image_path=image_path,
+                    model_output=model_output,
+                    model_json=model_json,
+                    parse_method="failed",
+                    x=0.0,
+                    y=0.0,
+                    yaw=0.0,
+                    nav_result="failed",
+                    failure_reason=str(parsed.get("reason")),
+                    started_at=started_at,
+                )
+                self._publish_and_log_result(result_payload)
+                return
 
         x = float(parsed["x"])
         y = float(parsed["y"])
@@ -222,27 +567,512 @@ class VLNBridgeNodeLocal(Node):
         self.goal_pub.publish(pose)
         self.get_logger().info("Published pose to /vln_goal_pose")
 
+        nav_result, failure_reason = self._navigate_to_pose(pose)
+
+        result_payload = self._build_trial_result(
+            instruction=instruction,
+            image_path=image_path,
+            model_output=model_output,
+            model_json=model_json,
+            parse_method=method,
+            x=x,
+            y=y,
+            yaw=yaw,
+            nav_result=nav_result,
+            failure_reason=failure_reason,
+            started_at=started_at,
+        )
+        self._publish_and_log_result(result_payload)
+
+    def _try_semantic_exploration(self, instruction: str, scan_result: dict) -> dict:
+        """Navigate to a known semantic candidate before trying visual confirmation again."""
+        live_configured = bool(self.image_topic or self.compressed_image_topic)
+        if not self.semantic_exploration_enabled or not live_configured:
+            return {"attempted": False}
+
+        model_json = scan_result.get("model_json")
+        model_target = ""
+        if isinstance(model_json, dict):
+            model_target = str(model_json.get("target", ""))
+
+        parsed = self.converter.resolve_named_target(
+            instruction=instruction,
+            model_target=model_target,
+        )
+        if not parsed.get("ok") and model_target:
+            parsed = self.converter.resolve_named_target(
+                instruction=instruction,
+                model_target="",
+            )
+        if not parsed.get("ok"):
+            return {
+                "attempted": False,
+                "reason": parsed.get("reason", "No semantic candidate matched."),
+            }
+
+        x = float(parsed["x"])
+        y = float(parsed["y"])
+        yaw = float(parsed["yaw"])
+        target = str(parsed.get("target", "semantic_candidate"))
+        self.get_logger().info(
+            "Target was not confirmed in the current view. "
+            f"Navigating to semantic candidate {target!r}: "
+            f"x={x:.2f}, y={y:.2f}, yaw={yaw:.2f}"
+        )
+
+        pose = self._build_pose(x=x, y=y, yaw=yaw)
+        if self.goal_pub is not None:
+            self.goal_pub.publish(pose)
+            self.get_logger().info("Published semantic candidate pose to /vln_goal_pose")
+
+        nav_result, failure_reason = self._navigate_to_pose(pose)
+        ok = nav_result in ("success", "dry_run")
+        return {
+            "attempted": True,
+            "ok": ok,
+            "x": x,
+            "y": y,
+            "yaw": yaw,
+            "target": target,
+            "nav_result": nav_result,
+            "reason": failure_reason,
+        }
+
+    def _navigate_to_pose(self, pose: PoseStamped) -> Tuple[str, str]:
         if self.dry_run:
             self.get_logger().info("dry_run=True, skipping goToPose call.")
-            return
+            return "dry_run", ""
 
-        self.navigator.goToPose(pose)
+        if self.navigator is None:
+            return "failed", "Navigator is not initialized."
+
+        max_attempts = 1
+        if self.nav_retry_on_stuck:
+            max_attempts += self.nav_max_retries
+
+        last_result = ("failed", "Navigation did not start.")
+        for attempt_index in range(max_attempts):
+            nav_result, failure_reason = self._navigate_to_pose_once(
+                pose=pose,
+                attempt_index=attempt_index + 1,
+                max_attempts=max_attempts,
+            )
+            last_result = (nav_result, failure_reason)
+            if nav_result != "stuck":
+                return last_result
+            if attempt_index >= max_attempts - 1:
+                return last_result
+
+            self.get_logger().warning(
+                "Nav2 appears stuck; running short cmd_vel recovery before retry."
+            )
+            self._recover_from_nav_stuck()
+
+        return last_result
+
+    def _navigate_to_pose_once(
+        self,
+        pose: PoseStamped,
+        attempt_index: int,
+        max_attempts: int,
+    ) -> Tuple[str, str]:
+        if self.clear_costmaps_before_nav:
+            try:
+                self.navigator.clearAllCostmaps()
+                self.get_logger().info("Cleared Nav2 costmaps before navigation.")
+            except Exception as exc:
+                self.get_logger().warning(f"Failed to clear Nav2 costmaps: {exc}")
+
+        try:
+            self.get_logger().info(
+                f"Starting Nav2 attempt {attempt_index}/{max_attempts}."
+            )
+            self.navigator.goToPose(pose)
+        except Exception as exc:
+            return "failed", f"Nav2 goToPose failed to start: {exc}"
+
+        nav_started_at = time.monotonic()
+        last_feedback_log_at = 0.0
+        best_distance = None
+        last_progress_at = nav_started_at
+        within_acceptance_since = None
         while not self.navigator.isTaskComplete():
-            feedback = self.navigator.getFeedback()
-            if feedback:
-                self.get_logger().info(
-                    f"Distance remaining: {feedback.distance_remaining:.2f} m"
+            elapsed = time.monotonic() - nav_started_at
+            if self.nav_timeout_sec > 0.0 and elapsed > self.nav_timeout_sec:
+                failure_reason = (
+                    f"Nav2 task exceeded nav_timeout_sec={self.nav_timeout_sec:.1f}."
                 )
+                self.get_logger().error(failure_reason)
+                try:
+                    self.navigator.cancelTask()
+                except Exception as exc:
+                    self.get_logger().warning(f"Failed to cancel timed-out Nav2 task: {exc}")
+                return "timeout", failure_reason
+
+            feedback = self.navigator.getFeedback()
+            now = time.monotonic()
+            if feedback:
+                feedback_distance = float(feedback.distance_remaining)
+                odom_distance = self._distance_from_latest_odom(pose)
+                distance_for_progress = (
+                    odom_distance if odom_distance is not None else feedback_distance
+                )
+                if (
+                    self.nav_accept_distance_m > 0.0
+                    and odom_distance is not None
+                    and odom_distance <= self.nav_accept_distance_m
+                ):
+                    if within_acceptance_since is None:
+                        within_acceptance_since = now
+                    elif now - within_acceptance_since >= self.nav_accept_distance_hold_sec:
+                        self.get_logger().info(
+                            "Accepting Nav2 goal by distance: "
+                            f"odom_distance={odom_distance:.2f}m <= "
+                            f"{self.nav_accept_distance_m:.2f}m for "
+                            f"{self.nav_accept_distance_hold_sec:.1f}s."
+                        )
+                        try:
+                            self.navigator.cancelTask()
+                        except Exception as exc:
+                            self.get_logger().warning(
+                                f"Failed to cancel accepted Nav2 task: {exc}"
+                            )
+                        return "success", ""
+                else:
+                    within_acceptance_since = None
+
+                if (
+                    best_distance is None
+                    or distance_for_progress < best_distance - self.nav_stuck_min_progress_m
+                ):
+                    best_distance = distance_for_progress
+                    last_progress_at = now
+
+                if (
+                    self.nav_retry_on_stuck
+                    and self.nav_stuck_timeout_sec > 0.0
+                    and now - last_progress_at > self.nav_stuck_timeout_sec
+                ):
+                    failure_reason = (
+                        "Nav2 made no meaningful progress for "
+                        f"{self.nav_stuck_timeout_sec:.1f}s "
+                        f"(best_distance={best_distance:.2f}m)."
+                    )
+                    self.get_logger().warning(failure_reason)
+                    try:
+                        self.navigator.cancelTask()
+                    except Exception as exc:
+                        self.get_logger().warning(f"Failed to cancel stuck Nav2 task: {exc}")
+                    return "stuck", failure_reason
+
+            if (
+                feedback
+                and now - last_feedback_log_at >= self.nav_feedback_log_interval_sec
+            ):
+                last_feedback_log_at = now
+                odom_distance = self._distance_from_latest_odom(pose)
+                odom_text = (
+                    f", odom_to_goal={odom_distance:.2f} m"
+                    if odom_distance is not None
+                    else ""
+                )
+                self.get_logger().info(
+                    f"Distance remaining: {feedback.distance_remaining:.2f} m{odom_text}"
+                )
+            time.sleep(0.05)
 
         result = self.navigator.getResult()
         if result == TaskResult.SUCCEEDED:
             self.get_logger().info("Navigation succeeded.")
-        elif result == TaskResult.CANCELED:
+            return "success", ""
+        if result == TaskResult.CANCELED:
             self.get_logger().warning("Navigation canceled.")
-        elif result == TaskResult.FAILED:
+            return "canceled", "Nav2 task canceled."
+        if result == TaskResult.FAILED:
             self.get_logger().error("Navigation failed.")
-        else:
-            self.get_logger().warning("Navigation returned unknown result.")
+            return "failed", "Nav2 task failed."
+
+        self.get_logger().warning("Navigation returned unknown result.")
+        return "unknown", "Nav2 returned unknown result."
+
+    def _distance_from_latest_odom(self, pose: PoseStamped) -> Optional[float]:
+        if self.latest_odom_x is None or self.latest_odom_y is None:
+            return None
+        if time.monotonic() - self.latest_odom_wall_time > 2.0:
+            return None
+        return math.hypot(
+            float(pose.pose.position.x) - float(self.latest_odom_x),
+            float(pose.pose.position.y) - float(self.latest_odom_y),
+        )
+
+    def _recover_from_nav_stuck(self) -> None:
+        if self.cmd_vel_pub is None:
+            return
+
+        backup = Twist()
+        backup.linear.x = self.nav_stuck_recovery_backup_speed_m_s
+        self._publish_cmd_vel_for_duration(
+            twist=backup,
+            duration_sec=max(0.0, self.nav_stuck_recovery_backup_duration_sec),
+        )
+
+        turn = Twist()
+        turn.angular.z = self.nav_stuck_recovery_turn_speed_rad_s
+        self._publish_cmd_vel_for_duration(
+            twist=turn,
+            duration_sec=max(0.0, self.nav_stuck_recovery_turn_duration_sec),
+        )
+        self._publish_zero_cmd_vel()
+
+        if self.clear_costmaps_before_nav and self.navigator is not None:
+            try:
+                self.navigator.clearAllCostmaps()
+                self.get_logger().info("Cleared Nav2 costmaps after stuck recovery.")
+            except Exception as exc:
+                self.get_logger().warning(
+                    f"Failed to clear Nav2 costmaps after recovery: {exc}"
+                )
+
+    def _publish_cmd_vel_for_duration(self, twist: Twist, duration_sec: float) -> None:
+        deadline = time.monotonic() + duration_sec
+        while time.monotonic() < deadline and rclpy.ok():
+            self.cmd_vel_pub.publish(twist)
+            time.sleep(0.05)
+
+    def _visual_scan_for_target(self, instruction: str) -> dict:
+        """Rotate in place and ask the VLM whether the target is visible in each view."""
+        live_configured = bool(self.image_topic or self.compressed_image_topic)
+        if not live_configured:
+            return {
+                "ok": False,
+                "reason": "visual_scan_requires_live_camera_topic",
+                "method": "visual_scan_failed",
+            }
+
+        last_image_path = ""
+        last_model_output = ""
+        last_model_json = None
+
+        for scan_index in range(self.visual_scan_steps):
+            self._wait_for_live_image(timeout_sec=self.image_timeout_sec)
+            try:
+                image_path = self._get_inference_image_path(
+                    instruction=f"scan_{scan_index + 1:02d}_{instruction}"
+                )
+                model_output = self.model.infer_goal_text(
+                    instruction=instruction,
+                    image_path=image_path,
+                )
+            except Exception as exc:
+                self.get_logger().error(f"Visual scan inference failed: {exc}")
+                return {
+                    "ok": False,
+                    "reason": f"visual_scan_inference_failed: {exc}",
+                    "image_path": last_image_path,
+                    "model_output": last_model_output,
+                    "model_json": last_model_json,
+                    "method": "visual_scan_failed",
+                }
+
+            model_json = self.converter.parse_model_json(model_output)
+            last_image_path = image_path
+            last_model_output = model_output
+            last_model_json = model_json
+            self.get_logger().info(
+                "Visual scan "
+                f"{scan_index + 1}/{self.visual_scan_steps}: "
+                f"image={image_path}, output={model_output}"
+            )
+
+            if self._model_reports_visible_target(
+                model_json=model_json,
+                instruction=instruction,
+            ):
+                return {
+                    "ok": True,
+                    "image_path": image_path,
+                    "model_output": model_output,
+                    "model_json": model_json,
+                    "method": "visual_scan",
+                }
+
+            if scan_index < self.visual_scan_steps - 1:
+                if not self._spin_for_visual_scan():
+                    return {
+                        "ok": False,
+                        "reason": "visual_scan_spin_failed",
+                        "image_path": last_image_path,
+                        "model_output": last_model_output,
+                        "model_json": last_model_json,
+                        "method": "visual_scan_failed",
+                    }
+
+        return {
+            "ok": False,
+            "reason": "target_not_visible_after_visual_scan",
+            "image_path": last_image_path,
+            "model_output": last_model_output,
+            "model_json": last_model_json,
+            "method": "visual_scan_not_visible",
+        }
+
+    def _model_reports_visible_target(
+        self,
+        model_json: Optional[dict],
+        instruction: str,
+    ) -> bool:
+        if not isinstance(model_json, dict):
+            return False
+
+        visible = bool(model_json.get("visible", False))
+        try:
+            confidence = float(model_json.get("confidence", 0.0))
+        except (TypeError, ValueError):
+            confidence = 0.0
+        target = str(model_json.get("target", "")).strip().lower()
+        if not target or target in ("unknown", "none", "not visible"):
+            return False
+
+        return (
+            visible
+            and confidence >= self.visual_scan_min_confidence
+            and self._target_matches_instruction(target=target, instruction=instruction)
+        )
+
+    @staticmethod
+    def _target_matches_instruction(target: str, instruction: str) -> bool:
+        target_text = target.lower()
+        instruction_text = instruction.lower()
+        alias_groups = (
+            ("plant", "potted plant", "green plant"),
+            ("chair", "office chair", "black office chair"),
+            ("purple box", "purple boxes", "purple package", "purple packages", "package area"),
+            ("shelf", "right shelf", "warehouse rack", "rack", "boxes"),
+        )
+
+        for aliases in alias_groups:
+            target_has_alias = any(alias in target_text for alias in aliases)
+            instruction_has_alias = any(alias in instruction_text for alias in aliases)
+            if target_has_alias and instruction_has_alias:
+                return True
+
+        # Ambiguous instructions are allowed only if the model names a concrete known target.
+        ambiguous_terms = ("target object", "object near the wall", "object")
+        if any(term in instruction_text for term in ambiguous_terms):
+            return any(
+                alias in target_text
+                for aliases in alias_groups
+                for alias in aliases
+            )
+
+        return False
+
+    def _spin_for_visual_scan(self) -> bool:
+        if self.dry_run:
+            self.get_logger().info("dry_run=True, visual scan will not rotate the robot.")
+            time.sleep(max(0.0, self.visual_scan_settle_sec))
+            return True
+
+        if self.visual_scan_spin_mode in ("cmd_vel", "twist", "velocity"):
+            return self._spin_for_visual_scan_cmd_vel()
+        if self.visual_scan_spin_mode == "nav2":
+            return self._spin_for_visual_scan_nav2()
+
+        self.get_logger().error(
+            f"Unsupported visual_scan_spin_mode={self.visual_scan_spin_mode!r}. "
+            "Use 'cmd_vel' or 'nav2'."
+        )
+        return False
+
+    def _spin_for_visual_scan_nav2(self) -> bool:
+        if self.navigator is None:
+            self.get_logger().error("Cannot run visual scan spin: navigator is not initialized.")
+            return False
+
+        image_time_before_spin = self.latest_image_wall_time
+        accepted = self.navigator.spin(
+            spin_dist=self.visual_scan_step_rad,
+            time_allowance=max(1, int(math.ceil(self.visual_scan_spin_time_allowance_sec))),
+        )
+        if not accepted:
+            self.get_logger().error("Visual scan spin action was rejected.")
+            return False
+
+        while not self.navigator.isTaskComplete():
+            time.sleep(0.05)
+
+        result = self.navigator.getResult()
+        if result != TaskResult.SUCCEEDED:
+            self.get_logger().error(f"Visual scan spin failed with result={result}.")
+            return False
+
+        self._wait_for_new_live_image(
+            after_wall_time=image_time_before_spin,
+            timeout_sec=max(0.5, self.visual_scan_settle_sec),
+        )
+        return True
+
+    def _spin_for_visual_scan_cmd_vel(self) -> bool:
+        if self.cmd_vel_pub is None:
+            self.get_logger().error("Cannot run visual scan spin: cmd_vel publisher is not initialized.")
+            return False
+
+        angular_speed = abs(self.visual_scan_angular_speed_rad_s)
+        if angular_speed <= 0.0:
+            self.get_logger().error("visual_scan_angular_speed_rad_s must be > 0.")
+            return False
+
+        image_time_before_spin = self.latest_image_wall_time
+        spin_dist = self.visual_scan_step_rad
+        duration_sec = abs(spin_dist) / angular_speed
+        direction = 1.0 if spin_dist >= 0.0 else -1.0
+        twist = Twist()
+        twist.angular.z = direction * angular_speed
+
+        self.get_logger().info(
+            "Visual scan cmd_vel spin: "
+            f"dist={spin_dist:.3f} rad, speed={twist.angular.z:.3f} rad/s, "
+            f"duration={duration_sec:.2f}s"
+        )
+        deadline = time.monotonic() + duration_sec
+        try:
+            while time.monotonic() < deadline and rclpy.ok():
+                self.cmd_vel_pub.publish(twist)
+                time.sleep(0.05)
+        finally:
+            self._publish_zero_cmd_vel()
+
+        self._wait_for_new_live_image(
+            after_wall_time=image_time_before_spin,
+            timeout_sec=max(0.5, self.visual_scan_settle_sec),
+        )
+        return True
+
+    def _publish_zero_cmd_vel(self) -> None:
+        if self.cmd_vel_pub is None:
+            return
+        stop = Twist()
+        for _ in range(4):
+            self.cmd_vel_pub.publish(stop)
+            time.sleep(0.05)
+
+    def _wait_for_live_image(self, timeout_sec: float) -> bool:
+        deadline = time.monotonic() + max(0.0, timeout_sec)
+        while time.monotonic() < deadline:
+            if self.latest_image_path and os.path.exists(self.latest_image_path):
+                age = time.monotonic() - self.latest_image_wall_time
+                if age <= self.image_timeout_sec:
+                    return True
+            time.sleep(0.05)
+        return bool(self.latest_image_path and os.path.exists(self.latest_image_path))
+
+    def _wait_for_new_live_image(self, after_wall_time: float, timeout_sec: float) -> bool:
+        deadline = time.monotonic() + max(0.0, timeout_sec)
+        while time.monotonic() < deadline:
+            if self.latest_image_wall_time > after_wall_time:
+                return True
+            time.sleep(0.05)
+        return False
 
     def _build_pose(self, x: float, y: float, yaw: float) -> PoseStamped:
         pose = PoseStamped()
@@ -261,6 +1091,7 @@ class VLNBridgeNodeLocal(Node):
                 self.image_topic,
                 self._on_image,
                 1,
+                callback_group=self.image_callback_group,
             )
             self.get_logger().info(f"Subscribed raw image topic: {self.image_topic}")
 
@@ -270,6 +1101,7 @@ class VLNBridgeNodeLocal(Node):
                 self.compressed_image_topic,
                 self._on_compressed_image,
                 1,
+                callback_group=self.image_callback_group,
             )
             self.get_logger().info(
                 f"Subscribed compressed image topic: {self.compressed_image_topic}"
@@ -278,7 +1110,14 @@ class VLNBridgeNodeLocal(Node):
         if not self.image_topic and not self.compressed_image_topic:
             self.get_logger().info(f"Using static image path: {self.image_path}")
 
-    def _get_inference_image_path(self) -> str:
+    def _ensure_live_image_dirs(self) -> None:
+        live_parent = os.path.dirname(self.live_image_path)
+        if live_parent:
+            os.makedirs(live_parent, exist_ok=True)
+        if self.live_image_snapshot_dir:
+            os.makedirs(self.live_image_snapshot_dir, exist_ok=True)
+
+    def _get_inference_image_path(self, instruction: str = "") -> str:
         live_configured = bool(self.image_topic or self.compressed_image_topic)
         if not live_configured:
             return self.image_path
@@ -287,7 +1126,10 @@ class VLNBridgeNodeLocal(Node):
         if self.latest_image_path and os.path.exists(self.latest_image_path):
             age = now - self.latest_image_wall_time
             if age <= self.image_timeout_sec:
-                return self.latest_image_path
+                return self._snapshot_live_image(
+                    source_path=self.latest_image_path,
+                    instruction=instruction,
+                )
 
             message = (
                 f"Latest live image is stale ({age:.1f}s old, "
@@ -301,6 +1143,38 @@ class VLNBridgeNodeLocal(Node):
 
         self.get_logger().warning(f"{message} Falling back to static image path.")
         return self.image_path
+
+    def _snapshot_live_image(self, source_path: str, instruction: str) -> str:
+        """Create a per-instruction immutable image path for inference and CSV logs."""
+        if not self.live_image_snapshot_dir:
+            return source_path
+
+        try:
+            os.makedirs(self.live_image_snapshot_dir, exist_ok=True)
+            self.trial_image_counter += 1
+            timestamp = time.strftime("%Y%m%d_%H%M%S")
+            slug = self._slugify_instruction(instruction)
+            filename = (
+                f"trial_{self.trial_image_counter:04d}_{timestamp}_"
+                f"{time.time_ns() % 1_000_000_000:09d}_{slug}.png"
+            )
+            snapshot_path = os.path.join(self.live_image_snapshot_dir, filename)
+            tmp_path = f"{snapshot_path}.tmp"
+            shutil.copyfile(source_path, tmp_path)
+            os.replace(tmp_path, snapshot_path)
+            self.get_logger().info(f"Saved trial image snapshot: {snapshot_path}")
+            return snapshot_path
+        except Exception as exc:
+            self.get_logger().warning(
+                f"Failed to create live image snapshot from {source_path}: {exc}. "
+                "Using latest live image path."
+            )
+            return source_path
+
+    @staticmethod
+    def _slugify_instruction(instruction: str) -> str:
+        slug = re.sub(r"[^a-zA-Z0-9]+", "_", instruction.strip().lower()).strip("_")
+        return slug[:48] or "instruction"
 
     def _on_image(self, msg: Image) -> None:
         try:
@@ -318,18 +1192,35 @@ class VLNBridgeNodeLocal(Node):
         except Exception as exc:
             self.get_logger().warning(f"Failed to decode compressed image: {exc}")
 
-    def _save_live_image(self, image) -> None:
-        now = time.monotonic()
-        if now - self.last_image_save_wall_time < self.live_image_save_interval_sec:
-            return
+    def _on_odom(self, msg: Odometry) -> None:
+        pose = msg.pose.pose
+        self.latest_odom_x = float(pose.position.x)
+        self.latest_odom_y = float(pose.position.y)
+        self.latest_odom_wall_time = time.monotonic()
 
-        os.makedirs(os.path.dirname(self.live_image_path), exist_ok=True)
-        tmp_path = f"{self.live_image_path}.tmp"
-        image.save(tmp_path, format="PNG")
-        os.replace(tmp_path, self.live_image_path)
-        self.latest_image_path = self.live_image_path
-        self.latest_image_wall_time = now
-        self.last_image_save_wall_time = now
+    def _save_live_image(self, image) -> None:
+        with self.image_save_lock:
+            now = time.monotonic()
+            if now - self.last_image_save_wall_time < self.live_image_save_interval_sec:
+                return
+
+            self._ensure_live_image_dirs()
+            tmp_path = (
+                f"{self.live_image_path}."
+                f"{os.getpid()}.{threading.get_ident()}.{time.time_ns()}.tmp"
+            )
+            try:
+                image.save(tmp_path, format="PNG")
+                if not os.path.exists(tmp_path) or os.path.getsize(tmp_path) == 0:
+                    raise RuntimeError(f"Image save produced no file: {tmp_path}")
+                os.replace(tmp_path, self.live_image_path)
+            finally:
+                if os.path.exists(tmp_path):
+                    os.remove(tmp_path)
+
+            self.latest_image_path = self.live_image_path
+            self.latest_image_wall_time = now
+            self.last_image_save_wall_time = now
 
     @staticmethod
     def _pil_from_image_msg(msg: Image):
@@ -371,15 +1262,83 @@ class VLNBridgeNodeLocal(Node):
 
         raise ValueError(f"Unsupported image encoding: {msg.encoding}")
 
+    def _build_trial_result(
+        self,
+        instruction: str,
+        image_path: str,
+        model_output: str,
+        model_json: Optional[dict],
+        parse_method: str,
+        x: float,
+        y: float,
+        yaw: float,
+        nav_result: str,
+        failure_reason: str,
+        started_at: float,
+    ) -> dict:
+        model_json = model_json or {}
+        return {
+            "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
+            "duration_sec": round(time.time() - started_at, 3),
+            "instruction": instruction,
+            "image_path": image_path,
+            "model_output": model_output,
+            "model_target": model_json.get("target", ""),
+            "visible": model_json.get("visible", ""),
+            "confidence": model_json.get("confidence", ""),
+            "parse_method": parse_method,
+            "target_x": x,
+            "target_y": y,
+            "target_yaw": yaw,
+            "nav_result": nav_result,
+            "failure_reason": failure_reason,
+        }
+
+    def _publish_and_log_result(self, payload: dict) -> None:
+        text = json.dumps(payload, ensure_ascii=False)
+        if self.result_pub is not None:
+            self.result_pub.publish(String(data=text))
+        self._append_trial_csv(payload)
+        self.get_logger().info(f"Trial result: {text}")
+
+    def _append_trial_csv(self, payload: dict) -> None:
+        os.makedirs(os.path.dirname(self.trial_log_path), exist_ok=True)
+        fieldnames = [
+            "timestamp",
+            "duration_sec",
+            "instruction",
+            "image_path",
+            "model_output",
+            "model_target",
+            "visible",
+            "confidence",
+            "parse_method",
+            "target_x",
+            "target_y",
+            "target_yaw",
+            "nav_result",
+            "failure_reason",
+        ]
+        write_header = not os.path.exists(self.trial_log_path)
+        with open(self.trial_log_path, "a", newline="", encoding="utf-8") as file_obj:
+            writer = csv.DictWriter(file_obj, fieldnames=fieldnames)
+            if write_header:
+                writer.writeheader()
+            writer.writerow({key: payload.get(key, "") for key in fieldnames})
+
 
 def main(args: Optional[list] = None) -> None:
     rclpy.init(args=args)
     node = VLNBridgeNodeLocal()
+    executor = MultiThreadedExecutor(num_threads=4)
+    executor.add_node(node)
     try:
-        rclpy.spin(node)
+        executor.spin()
     except KeyboardInterrupt:
         pass
     finally:
+        executor.remove_node(node)
+        node.model.shutdown()
         node.destroy_node()
         rclpy.shutdown()
 

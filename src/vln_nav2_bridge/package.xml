@@ -2,7 +2,7 @@
 <package format="3">
   <name>vln_nav2_bridge</name>
   <version>0.1.0</version>
-  <description>Local VLN to Nav2 bridge node for Node 5.</description>
+  <description>Local VLN to Nav2 bridge node for Node 5/6.</description>
   <maintainer email="bluepoisons@example.com">bluepoisons</maintainer>
   <license>MIT</license>
 
@@ -12,10 +12,12 @@
   <depend>std_msgs</depend>
   <depend>sensor_msgs</depend>
   <depend>geometry_msgs</depend>
+  <depend>nav_msgs</depend>
 
   <exec_depend>nav2_simple_commander</exec_depend>
   <exec_depend>python3-torch</exec_depend>
   <exec_depend>python3-pil</exec_depend>
+  <exec_depend>python3-numpy</exec_depend>
 
   <exec_depend>launch</exec_depend>
   <exec_depend>launch_ros</exec_depend>

@@ -76,16 +76,14 @@ def _move_inputs_for_auto_device(inputs, model):
 
 def _build_prompt(instruction: str) -> str:
     return (
-        "You are a warehouse navigation assistant. "
-        "Use the scene image to verify whether the target object is visible. "
-        "Known map memory in map frame: "
-        "shelf with purple boxes: x=-6.78, y=10.96, yaw=0.0; "
-        "plant: x=-0.43, y=-2.92, yaw=0.0; "
-        "chair: x=-0.54, y=-0.69, yaw=1.57. "
+        "You are a robot camera target verifier in a warehouse. "
+        "Look only at the current camera image. Do not use map memory or prior coordinates. "
+        "Decide whether the object requested by the user is visibly present in this image. "
         "Return only one compact JSON object with keys "
-        "target, visible, confidence, x, y, yaw. "
-        "If the target is not visible but exists in map memory, use the memory coordinates "
-        "and set visible=false. "
+        "target, visible, confidence, horizontal_position, evidence. "
+        "horizontal_position must be left, center, right, or unknown. "
+        "If the requested object is not visible, set visible=false, confidence=0.0, "
+        "horizontal_position=unknown, and do not invent coordinates. "
         f"User instruction: {instruction}"
     )
 

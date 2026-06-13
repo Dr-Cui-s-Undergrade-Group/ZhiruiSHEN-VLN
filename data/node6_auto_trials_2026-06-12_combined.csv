@@ -1,0 +1,136 @@
+trial_id,timestamp,duration_sec,instruction,image_path,model_output,model_target,visible,confidence,parse_method,target_x,target_y,target_yaw,final_pose_source,final_x,final_y,final_yaw,final_error_m,within_success_radius,nav_result,failure_reason
+1,2026-06-12 10:31:01,380.938,Go to the plant.,/home/bluepoisons/Desktop/FURP/VLN/ZhiruiSHEN-VLN/data/runtime/trial_images/trial_0006_20260612_102612_056516733_scan_06_go_to_the_plant.png,"```json
+{
+  ""target"": ""plant"",
+  ""visible"": true,
+  ""confidence"": 0.95,
+  ""horizontal_position"": ""center"",
+  ""evidence"": ""The plant is visible in the image, located on the right side of the frame, positioned next to the black office chair. The plant is in a tall black pot, with green leaves that are characteristic of a palm or similar plant.""
+}
+```",plant,True,0.95,visual_semantic_map,-0.43,-2.92,0.0,odom,-0.208,-2.887,-0.242,0.224,True,success,
+2,2026-06-12 10:33:09,125.386,Move to the potted plant on the floor.,/home/bluepoisons/Desktop/FURP/VLN/ZhiruiSHEN-VLN/data/runtime/trial_images/trial_0012_20260612_103227_763722251_scan_06_move_to_the_potted_plant_on_the_floor.png,"```json
+{
+  ""target"": ""potted plant on the floor"",
+  ""visible"": true,
+  ""confidence"": 0.95,
+  ""horizontal_position"": ""center"",
+  ""evidence"": ""The potted plant is visible on the floor in the center of the image, with its black pot positioned in the middle of the frame. The plant is clearly visible and its location is consistent with the user's request to move to it.""
+}
+```",potted plant on the floor,True,0.95,visual_semantic_map,-0.43,-2.92,0.0,odom,-0.215,-2.883,-0.242,0.218,True,success,
+3,2026-06-12 10:35:33,142.084,Navigate to the green plant near the chair.,/home/bluepoisons/Desktop/FURP/VLN/ZhiruiSHEN-VLN/data/runtime/trial_images/trial_0018_20260612_103447_131590695_scan_06_navigate_to_the_green_plant_near_the_cha.png,"```json
+{
+  ""target"": ""green plant"",
+  ""visible"": true,
+  ""confidence"": 0.95,
+  ""horizontal_position"": ""left"",
+  ""evidence"": ""The green plant is visible in the image, located in the center-left area of the frame. It is in a black rectangular planter and is positioned on the floor of the warehouse.""
+}
+```",green plant,True,0.95,visual_semantic_map,-0.43,-2.92,0.0,odom,-0.219,-2.885,-0.243,0.214,True,success,
+4,2026-06-12 11:02:57,100.867,Go to the black office chair.,/home/bluepoisons/Desktop/FURP/VLN/ZhiruiSHEN-VLN/data/runtime/trial_images/trial_0004_20260612_110210_592464179_scan_04_go_to_the_black_office_chair.png,"```json
+{
+  ""target"": ""black office chair"",
+  ""visible"": true,
+  ""confidence"": 0.95,
+  ""horizontal_position"": ""left"",
+  ""evidence"": ""The black office chair is clearly visible in the foreground of the image, positioned on the floor with its chrome frame and black upholstery. The chair is located on the left side of the frame.""
+}
+```",black office chair,True,0.95,visual_semantic_map,-0.54,-0.69,1.57,odom,-0.359,-0.839,1.809,0.234,True,success,
+5,2026-06-12 11:04:52,111.627,Move to the chair near the robot.,/home/bluepoisons/Desktop/FURP/VLN/ZhiruiSHEN-VLN/data/runtime/trial_images/trial_0008_20260612_110346_743898368_scan_04_move_to_the_chair_near_the_robot.png,"```json
+{
+  ""target"": ""chair"",
+  ""visible"": true,
+  ""confidence"": 0.95,
+  ""horizontal_position"": ""left"",
+  ""evidence"": ""The chair is visible in the image, positioned on the left side of the frame, near the center of the scene. The chair is a black office-style chair with a chrome frame, and it is located on a gray floor, close to the center of the image.""
+}
+```",chair,True,0.95,visual_semantic_map,-0.54,-0.69,1.57,odom,-0.354,-0.833,1.812,0.234,True,success,
+6,2026-06-12 11:26:49,302.752,Navigate to the chair beside the plant.,/home/bluepoisons/Desktop/FURP/VLN/ZhiruiSHEN-VLN/data/runtime/trial_images/trial_0004_20260612_112242_766986319_scan_04_navigate_to_the_chair_beside_the_plant.png,"```json
+{
+  ""target"": ""chair"",
+  ""visible"": true,
+  ""confidence"": 0.95,
+  ""horizontal_position"": ""left"",
+  ""evidence"": ""The image shows a black chair with a chrome frame positioned on the left side of the frame, in the foreground. The chair is clearly visible and is located in the foreground of the warehouse space.""
+}
+```",chair,True,0.95,visual_semantic_map,-0.54,-0.69,1.57,odom,-0.148,-2.311,2.553,1.668,False,timeout,Nav2 task exceeded nav_timeout_sec=240.0.
+7,2026-06-12 11:31:34,282.11,Go to the purple boxes.,/home/bluepoisons/Desktop/FURP/VLN/ZhiruiSHEN-VLN/data/runtime/trial_images/trial_0008_20260612_112904_395125152_scan_04_go_to_the_purple_boxes.png,"```json
+{
+  ""target"": ""purple boxes"",
+  ""visible"": false,
+  ""confidence"": 0.0,
+  ""horizontal_position"": ""unknown"",
+  ""evidence"": ""The image shows a warehouse interior with a potted plant in a black pot on the right side. There are no purple boxes visible in the image.""
+}
+```",purple boxes,False,0.0,visual_scan_failed,0.0,0.0,0.0,odom,0.173,-1.857,-0.505,1.865,False,failed,visual_scan_spin_failed
+8,2026-06-12 11:34:26,169.908,Move to the right shelf with purple boxes.,/home/bluepoisons/Desktop/FURP/VLN/ZhiruiSHEN-VLN/data/runtime/trial_images/trial_0009_20260612_113136_758595889_scan_01_move_to_the_right_shelf_with_purple_boxe.png,"```json
+{
+  ""target"": ""right shelf with purple boxes"",
+  ""visible"": false,
+  ""confidence"": 0.0,
+  ""horizontal_position"": ""unknown"",
+  ""evidence"": ""The image shows an empty warehouse interior with a gray floor, white brick walls, and yellow upper sections. There are no shelves with purple boxes visible in the image. The user's instruction is not fulfilled as the target object is not present.""
+}
+```",right shelf with purple boxes,False,0.0,visual_scan_failed,0.0,0.0,0.0,odom,-0.058,-1.582,0.054,1.583,False,failed,visual_scan_spin_failed
+9,2026-06-12 11:37:01,152.372,Navigate to the shelf area containing purple packages.,/home/bluepoisons/Desktop/FURP/VLN/ZhiruiSHEN-VLN/data/runtime/trial_images/trial_0010_20260612_113429_285401236_scan_01_navigate_to_the_shelf_area_containing_pu.png,"```json
+{
+  ""target"": ""shelf area containing purple packages"",
+  ""visible"": false,
+  ""confidence"": 0.0,
+  ""horizontal_position"": ""unknown"",
+  ""evidence"": ""The image shows an empty warehouse interior with a gray floor, white brick walls, and yellow upper walls. No shelves or purple packages are visible in the image.""
+}
+```",shelf area containing purple packages,False,0.0,visual_scan_failed,0.0,0.0,0.0,odom,-0.298,-1.54,0.136,1.569,False,failed,visual_scan_spin_failed
+10,2026-06-12 11:39:57,173.12,Go to the shelf.,/home/bluepoisons/Desktop/FURP/VLN/ZhiruiSHEN-VLN/data/runtime/trial_images/trial_0011_20260612_113704_284644852_scan_01_go_to_the_shelf.png,"```json
+{
+  ""target"": ""shelf"",
+  ""visible"": false,
+  ""confidence"": 0.0,
+  ""horizontal_position"": ""unknown"",
+  ""evidence"": ""No shelf is visible in the image. The image shows an empty warehouse interior with a gray floor, white brick walls, and yellow upper sections. There are no shelves or storage units visible.""
+}
+```",shelf,False,0.0,visual_scan_failed,0.0,0.0,0.0,odom,-0.769,-1.438,0.9,1.631,False,failed,visual_scan_spin_failed
+11,2026-06-12 11:42:57,177.528,Move to the right shelf.,/home/bluepoisons/Desktop/FURP/VLN/ZhiruiSHEN-VLN/data/runtime/trial_images/trial_0012_20260612_113959_993765725_scan_01_move_to_the_right_shelf.png,"```json
+{
+  ""target"": ""right shelf"",
+  ""visible"": false,
+  ""confidence"": 0.0,
+  ""horizontal_position"": ""unknown"",
+  ""evidence"": ""The image shows an empty warehouse interior with a gray floor, yellow and white walls, and overhead lighting. There is no visible shelf on the right side of the image. The user instruction asks to move to the right shelf, but the shelf is not present in the image.""
+}
+```",right shelf,False,0.0,visual_scan_failed,0.0,0.0,0.0,odom,-1.045,-1.513,1.661,1.839,False,failed,visual_scan_spin_failed
+12,2026-06-12 11:43:07,6.586,Navigate to the warehouse rack near the boxes.,/home/bluepoisons/Desktop/FURP/VLN/ZhiruiSHEN-VLN/data/runtime/trial_images/trial_0013_20260612_114300_588224114_scan_01_navigate_to_the_warehouse_rack_near_the_.png,"```json
+{
+  ""target"": ""warehouse rack"",
+  ""visible"": true,
+  ""confidence"": 0.95,
+  ""horizontal_position"": ""left"",
+  ""evidence"": ""The warehouse rack is visible on the left side of the image, with multiple shelves holding boxes. The rack is clearly in the frame and is near the boxes.""
+}
+```",warehouse rack,True,0.95,visual_map_failed,0.0,0.0,0.0,odom,-1.045,-1.513,1.661,1.839,False,failed,No semantic-map target matched model_target='warehouse rack'.
+13,2026-06-12 11:45:52,161.934,Go to the object near the wall.,/home/bluepoisons/Desktop/FURP/VLN/ZhiruiSHEN-VLN/data/runtime/trial_images/trial_0014_20260612_114310_487139556_scan_01_go_to_the_object_near_the_wall.png,"```json
+{
+  ""target"": ""object near the wall"",
+  ""visible"": true,
+  ""confidence"": 0.95,
+  ""horizontal_position"": ""left"",
+  ""evidence"": ""A small cart with stacked purple boxes is visible near the wall in the center of the image.""
+}
+```",object near the wall,True,0.95,visual_scan_failed,0.0,0.0,0.0,odom,-1.071,-1.762,1.713,2.062,False,failed,visual_scan_spin_failed
+14,2026-06-12 11:46:02,6.747,Move to the package area.,/home/bluepoisons/Desktop/FURP/VLN/ZhiruiSHEN-VLN/data/runtime/trial_images/trial_0015_20260612_114555_568248274_scan_01_move_to_the_package_area.png,"```json
+{
+  ""target"": ""package area"",
+  ""visible"": true,
+  ""confidence"": 0.95,
+  ""horizontal_position"": ""left"",
+  ""evidence"": ""The package area is visible in the image, located on the far right side of the warehouse, near the back wall where a forklift cart with stacked packages is present.""
+}
+```",package area,True,0.95,visual_map_failed,0.0,0.0,0.0,odom,-1.072,-1.762,1.714,2.062,False,failed,No semantic-map target matched model_target='package area'.
+15,2026-06-12 11:46:12,7.208,Navigate to the target object.,/home/bluepoisons/Desktop/FURP/VLN/ZhiruiSHEN-VLN/data/runtime/trial_images/trial_0016_20260612_114605_662589104_scan_01_navigate_to_the_target_object.png,"```json
+{
+  ""target"": ""a cart with boxes"",
+  ""visible"": true,
+  ""confidence"": 0.85,
+  ""horizontal_position"": ""center"",
+  ""evidence"": ""A small cart with wheels is visible in the background of the warehouse, carrying a stack of purple boxes. The cart is positioned near the center of the image, slightly to the right of the center line.""
+}
+```",a cart with boxes,True,0.85,visual_map_failed,0.0,0.0,0.0,odom,-1.072,-1.762,1.714,2.062,False,failed,No semantic-map target matched model_target='a cart with boxes'.
