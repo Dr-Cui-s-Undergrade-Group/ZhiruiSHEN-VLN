@@ -277,8 +277,6 @@ data/node6_auto_trials_2026-06-12_todo6_11_odom.csv
 
 ### Node 6 规划链路复查
 
-已继续检查 Node 6 的下一步任务，结论是：`GridBased` blocker 还没有完成闭环修复，但已经定位到当前最可疑原因。
-
 新增工具：
 
 ```text
@@ -287,7 +285,7 @@ ros2 run vln_nav2_bridge node6_map_preflight
 
 该工具会读取 `data/warehouse_map.yaml/png`，检查当前 `/chassis/odom` 和默认语义目标是否落在可通行栅格上。
 
-当前现场复查结果：
+2026-06-12 现场复查结果：
 
 ```text
 current_odom:/chassis/odom = (-1.061, -1.730, yaw=1.692)
@@ -307,9 +305,42 @@ shelf/package_area (-6.78, 10.96) OK
 因此本轮失败不应优先归因到 chair/shelf 目标中心贴障碍；更直接的问题是机器人当前 map 位姿落在占据栅格里。下一轮重跑前应先处理 TF/定位链路：
 
 1. 使用 Nav2/AMCL 时不要同时运行静态 `map -> odom`；`map -> odom` 应由 AMCL 发布。
-2. 启动 Nav2 后先运行 `node6_map_preflight`，确认当前机器人位姿是 `[OK]`。
-3. 再在 RViz 中用 `Nav2 Goal` 单独验证 `(-0.54, -0.69)` 和 `(-6.78, 10.96)`。
-4. Nav2 单独验证通过后，再用 `data/node6_trials_6_11.txt` 重跑 Node 6。
+2. 启动 Nav2 后优先使用 `/set_initial_pose` service 初始化 AMCL；直接 publish `/initialpose` 在本次现场中没有稳定生效。
+3. 运行 `node6_map_preflight`，确认当前机器人位姿是 `[OK]`。
+4. 再单独验证 `(-0.54, -0.69)` 和 `(-6.78, 10.96)` 的 Nav2 planner/controller。
+5. Nav2 单独验证通过后，再用 `data/node6_trials_6_11.txt` 重跑 Node 6。
+
+2026-06-13 现场复查结果：
+
+```text
+current_odom:/chassis/odom ~= (-0.02, 0.00, yaw=0.00)
+current_odom map cell: [OK], center=free, 0.30 m radius free=100.0%
+plant (-0.43, -2.92):              [OK]
+chair (-0.54, -0.69):              [OK]
+shelf/package_area (-6.78, 10.96): [OK]
+```
+
+Nav2/AMCL 启动注意事项：
+
+* 本轮没有启动静态 `map -> odom`，只保留 `base_link -> base_footprint`。
+* AMCL 初始位姿用 `/set_initial_pose` service 成功触发；日志出现 `initialPoseReceived` 后，`global_costmap` 才完成 `start`，Nav2 navigation lifecycle 全部进入 `active`。
+* `compute_path_to_pose` 单独验证：
+  * `chair (-0.54, -0.69)` -> `GridBased` 规划成功。
+  * `shelf/package_area (-6.78, 10.96)` -> `GridBased` 规划成功。
+* `navigate_to_pose` 单独验证：
+  * `chair (-0.54, -0.69)` -> action 返回 `SUCCEEDED`。
+  * `shelf/package_area (-6.78, 10.96)` -> action 日志确认 `Reached the goal!` / `Goal succeeded`，实车从 chair 区域持续导航到 shelf 区域，末端 AMCL 约为 `(-6.61, 11.03)`。
+
+结论：当前 `GridBased` blocker 已经确认不是目标点问题，而是启动顺序和 AMCL 初始化问题。下一步应从这个已通过的 Nav2 状态继续启动 `vln_nav2_bridge`，再重跑 `data/node6_trials_6_11.txt`。
+
+2026-06-13 继续重跑 `data/node6_trials_6_11.txt` 时又发现一个独立问题：
+
+* 单独导航到 shelf/package_area 后，机器人会停在货架目标容差内，但 odom 可能位于货架边缘栅格附近，例如 `(-6.76, 10.78)`，`node6_map_preflight` 显示 0.30 m 半径 free ratio 约 92%，低于 95% 阈值。
+* 从这个贴边起点反向规划到 `chair (-0.54, -0.69)` 会再次出现 `GridBased: failed to create plan with tolerance 0.50`。用 `node6_map_preflight` 给出的最近 free 候选，或手动用 `/cmd_vel` 脱离到 `(-6.38, 10.80)` 附近后，当前位姿恢复为 `[OK]`，`compute_path_to_pose` 到 chair 重新成功。
+* VLN bridge 视觉扫描 8 次没有从货架区看到 chair/plant，最后按 semantic candidate 解析到 chair，这是预期的语义兜底路径，不是模型 JSON grounding 成功。
+* 从货架区到 chair 的实际路径很长且仿真速度偏慢。默认 `nav_timeout_sec=240` 不足以完成这段长距离返回，会把慢速长路径误记为 timeout/stuck。继续跑 Trial 6-11 时应把 bridge 的 `nav_timeout_sec` 和 auto-trials 的 `--timeout-sec` 提高到 900 秒，或先把机器人重置/移动到本轮起点附近再开始评估。
+
+当前更新后的判断：AMCL/TF 问题已经解决；Node 6 剩余风险是 shelf 末端 goal checker 容差让机器人停在货架边缘，以及长距离反向任务超出默认超时。
 
 
 </details>
