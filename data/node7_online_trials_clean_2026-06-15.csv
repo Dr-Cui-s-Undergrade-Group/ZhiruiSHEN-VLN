@@ -1,0 +1,120 @@
+trial_id,timestamp,duration_sec,instruction,image_path,model_output,model_target,visible,confidence,parse_method,target_x,target_y,target_yaw,final_pose_source,final_x,final_y,final_yaw,final_error_m,within_success_radius,navigation_arrived,visual_confirmed,task_success,nav_result,failure_reason
+1,2026-06-15 15:46:08,315.94,Go to the plant.,/home/bluepoisons/Desktop/FURP/VLN/ZhiruiSHEN-VLN/data/runtime/trial_images/trial_0008_20260615_154155_516109933_scan_08_go_to_the_plant.png,"```json
+{
+  ""target"": ""plant"",
+  ""visible"": false,
+  ""confidence"": 0.0,
+  ""horizontal_position"": ""unknown"",
+  ""evidence"": ""The image shows an empty warehouse interior with no visible plant or greenery. The scene is composed of concrete floors, metal beams, and painted walls, but no plant is present.""
+}
+```",plant,False,0.0,semantic_explore_failed,-0.43,-2.92,0.0,amcl_pose,-0.309,-3.035,-0.859,0.167,True,True,False,False,stuck,Nav2 made no meaningful progress for 45.0s (best_distance=0.50m).
+2,2026-06-15 15:48:34,143.632,Move to the potted plant on the floor.,/home/bluepoisons/Desktop/FURP/VLN/ZhiruiSHEN-VLN/data/runtime/trial_images/trial_0024_20260615_154827_892878730_scan_08_move_to_the_potted_plant_on_the_floor.png,"```json
+{
+  ""target"": ""potted plant on the floor"",
+  ""visible"": false,
+  ""confidence"": 0.0,
+  ""horizontal_position"": ""unknown"",
+  ""evidence"": ""The image shows an empty warehouse interior with a gray floor, yellow and white walls, and overhead lighting. There is no potted plant visible on the floor or anywhere in the image.""
+}
+```",potted plant on the floor,False,0.0,semantic_explore_visual_scan_failed,-0.43,-2.92,0.0,amcl_pose,-0.321,-3.039,0.395,0.162,True,True,False,False,failed,semantic_explore_confirm_failed: target_not_visible_after_visual_scan
+3,2026-06-15 15:51:31,174.657,Navigate to the green plant near the chair.,/home/bluepoisons/Desktop/FURP/VLN/ZhiruiSHEN-VLN/data/runtime/trial_images/trial_0040_20260615_155125_436359708_scan_08_navigate_to_the_green_plant_near_the_cha.png,"```json
+{
+  ""target"": ""green plant near the chair"",
+  ""visible"": false,
+  ""confidence"": 0.0,
+  ""horizontal_position"": ""unknown"",
+  ""evidence"": ""The image shows an empty warehouse interior with no visible green plant or chair. The user's instruction cannot be fulfilled as the requested object is not present in the image.""
+}
+```",green plant near the chair,False,0.0,semantic_explore_visual_scan_failed,-0.43,-2.92,0.0,amcl_pose,-0.398,-2.971,0.576,0.06,True,True,False,False,failed,semantic_explore_confirm_failed: target_not_visible_after_visual_scan
+4,2026-06-15 15:54:59,204.751,Go to the black office chair.,/home/bluepoisons/Desktop/FURP/VLN/ZhiruiSHEN-VLN/data/runtime/trial_images/trial_0045_20260615_155210_405677222_scan_05_go_to_the_black_office_chair.png,"```json
+{
+  ""target"": ""black office chair"",
+  ""visible"": true,
+  ""confidence"": 0.95,
+  ""horizontal_position"": ""left"",
+  ""evidence"": ""A black office chair with chrome legs is visible in the lower-left corner of the image.""
+}
+```",black office chair,True,0.95,visual_semantic_map,-0.54,-0.69,1.57,amcl_pose,-0.339,-0.813,1.885,0.236,True,True,True,True,success,
+5,2026-06-15 15:57:48,166.638,Move to the chair near the robot.,/home/bluepoisons/Desktop/FURP/VLN/ZhiruiSHEN-VLN/data/runtime/trial_images/trial_0061_20260615_155742_314422296_scan_08_move_to_the_chair_near_the_robot.png,"```json
+{
+  ""target"": ""chair"",
+  ""visible"": false,
+  ""confidence"": 0.0,
+  ""horizontal_position"": ""unknown"",
+  ""evidence"": ""There is no chair visible in the image. The image shows a warehouse with shelves, pallets, and a cart, but no chair is present.""
+}
+```",chair,False,0.0,semantic_explore_visual_scan_failed,-0.54,-0.69,1.57,amcl_pose,-0.372,-0.78,2.11,0.191,True,True,False,False,failed,semantic_explore_confirm_failed: target_not_visible_after_visual_scan
+6,2026-06-15 16:00:54,183.518,Navigate to the chair beside the plant.,/home/bluepoisons/Desktop/FURP/VLN/ZhiruiSHEN-VLN/data/runtime/trial_images/trial_0077_20260615_160047_510953098_scan_08_navigate_to_the_chair_beside_the_plant.png,"```json
+{
+  ""target"": ""chair beside the plant"",
+  ""visible"": false,
+  ""confidence"": 0.0,
+  ""horizontal_position"": ""unknown"",
+  ""evidence"": ""The image shows a warehouse interior with shelves, pallets, and a small cart with boxes. There is no chair or plant visible in the image. The user's instruction cannot be fulfilled as the target object is not present.""
+}
+```",chair beside the plant,False,0.0,semantic_explore_visual_scan_failed,-0.54,-0.69,1.57,amcl_pose,-0.39,-0.707,2.106,0.151,True,True,False,False,failed,semantic_explore_confirm_failed: target_not_visible_after_visual_scan
+7,2026-06-15 16:13:38,761.715,Go to the purple boxes.,/home/bluepoisons/Desktop/FURP/VLN/ZhiruiSHEN-VLN/data/runtime/trial_images/trial_0078_20260615_160057_196177212_scan_01_go_to_the_purple_boxes.png,"```json
+{
+  ""target"": ""purple boxes"",
+  ""visible"": true,
+  ""confidence"": 0.95,
+  ""horizontal_position"": ""left"",
+  ""evidence"": ""The purple boxes are visible on the lower shelves of the orange shelving units, located in the middle-left portion of the image.""
+}
+```",purple boxes,True,0.95,visual_semantic_map,-6.78,10.96,0.0,amcl_pose,-6.528,11.308,-2.077,0.43,True,True,True,True,success,
+8,2026-06-15 16:13:50,8.536,Move to the right shelf with purple boxes.,/home/bluepoisons/Desktop/FURP/VLN/ZhiruiSHEN-VLN/data/runtime/trial_images/trial_0079_20260615_161341_579898331_scan_01_move_to_the_right_shelf_with_purple_boxe.png,"```json
+{
+  ""target"": ""right shelf with purple boxes"",
+  ""visible"": true,
+  ""confidence"": 0.95,
+  ""horizontal_position"": ""right"",
+  ""evidence"": ""The image shows a right shelf with purple boxes visible in the background, aligned with the user's request to move to the right shelf.""
+}
+```",right shelf with purple boxes,True,0.95,visual_semantic_map,-6.78,10.96,0.0,amcl_pose,-6.528,11.308,-2.077,0.43,True,True,True,True,success,
+9,2026-06-15 16:14:02,9.392,Navigate to the shelf area containing purple packages.,/home/bluepoisons/Desktop/FURP/VLN/ZhiruiSHEN-VLN/data/runtime/trial_images/trial_0080_20260615_161352_745042063_scan_01_navigate_to_the_shelf_area_containing_pu.png,"```json
+{
+  ""target"": ""shelf area containing purple packages"",
+  ""visible"": true,
+  ""confidence"": 0.95,
+  ""horizontal_position"": ""center"",
+  ""evidence"": ""The image shows a close-up of a yellow forklift in a warehouse. On the shelf above the forklift, there are several purple packages stacked. The shelf area is clearly visible and contains the requested purple packages.""
+}
+```",shelf area containing purple packages,True,0.95,visual_semantic_map,-6.78,10.96,0.0,amcl_pose,-6.528,11.308,-2.077,0.43,True,True,True,True,success,
+10,2026-06-15 16:14:13,8.897,Go to the shelf.,/home/bluepoisons/Desktop/FURP/VLN/ZhiruiSHEN-VLN/data/runtime/trial_images/trial_0081_20260615_161404_666296940_scan_01_go_to_the_shelf.png,"```json
+{
+  ""target"": ""shelf"",
+  ""visible"": true,
+  ""confidence"": 0.95,
+  ""horizontal_position"": ""center"",
+  ""evidence"": ""The image shows a shelf with purple boxes stacked on it, visible in the background of the warehouse. The shelf is part of the industrial equipment, and the camera is positioned to capture it.""
+}
+```",shelf,True,0.95,visual_semantic_map,-6.78,10.96,0.0,amcl_pose,-6.528,11.308,-2.077,0.43,True,True,True,True,success,
+11,2026-06-15 16:14:26,9.86,Move to the right shelf.,/home/bluepoisons/Desktop/FURP/VLN/ZhiruiSHEN-VLN/data/runtime/trial_images/trial_0082_20260615_161416_243085650_scan_01_move_to_the_right_shelf.png,"```json
+{
+  ""target"": ""right shelf"",
+  ""visible"": true,
+  ""confidence"": 0.95,
+  ""horizontal_position"": ""right"",
+  ""evidence"": ""The image shows a warehouse with a yellow forklift on the right side of the frame. The right shelf is visible in the background, with purple boxes stacked on it. The forklift is positioned near the right shelf, indicating the need to move to the right shelf.""
+}
+```",right shelf,True,0.95,visual_semantic_map,-6.78,10.96,0.0,amcl_pose,-6.528,11.308,-2.077,0.43,True,True,True,True,success,
+12,2026-06-15 16:14:37,8.395,Navigate to the warehouse rack near the boxes.,/home/bluepoisons/Desktop/FURP/VLN/ZhiruiSHEN-VLN/data/runtime/trial_images/trial_0083_20260615_161428_742523803_scan_01_navigate_to_the_warehouse_rack_near_the_.png,"```json
+{
+  ""target"": ""warehouse rack near the boxes"",
+  ""visible"": true,
+  ""confidence"": 0.95,
+  ""horizontal_position"": ""center"",
+  ""evidence"": ""The image shows a warehouse rack with purple boxes stacked on it, and the rack is located near the boxes in the image.""
+}
+```",warehouse rack near the boxes,True,0.95,visual_semantic_map,-6.78,10.96,0.0,amcl_pose,-6.528,11.308,-2.077,0.43,True,True,True,True,success,
+13,2026-06-15 16:14:39,0.0,Go to the object near the wall.,,,,,,ambiguous_target,0.0,0.0,0.0,amcl_pose,-6.528,11.308,-2.077,13.057,False,False,False,False,failed,"ambiguous_target: instruction does not name a concrete known semantic target. Ask for plant, chair, shelf, purple boxes, or package area."
+14,2026-06-15 16:14:50,8.707,Move to the package area.,/home/bluepoisons/Desktop/FURP/VLN/ZhiruiSHEN-VLN/data/runtime/trial_images/trial_0084_20260615_161442_275943879_scan_01_move_to_the_package_area.png,"```json
+{
+  ""target"": ""package area"",
+  ""visible"": true,
+  ""confidence"": 0.95,
+  ""horizontal_position"": ""center"",
+  ""evidence"": ""The image shows a warehouse environment with a yellow forklift in the foreground, and packages stored on shelves in the background. The package area is clearly visible and accessible.""
+}
+```",package area,True,0.95,visual_semantic_map,-6.78,10.96,0.0,amcl_pose,-6.528,11.308,-2.077,0.43,True,True,True,True,success,
+15,2026-06-15 16:14:53,0.0,Navigate to the target object.,,,,,,ambiguous_target,0.0,0.0,0.0,amcl_pose,-6.528,11.308,-2.077,13.057,False,False,False,False,failed,"ambiguous_target: instruction does not name a concrete known semantic target. Ask for plant, chair, shelf, purple boxes, or package area."

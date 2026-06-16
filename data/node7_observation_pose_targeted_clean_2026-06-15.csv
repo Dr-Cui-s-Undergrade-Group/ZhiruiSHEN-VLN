@@ -1,0 +1,55 @@
+trial_id,timestamp,duration_sec,instruction,image_path,model_output,model_target,visible,confidence,parse_method,target_x,target_y,target_yaw,final_pose_source,final_x,final_y,final_yaw,final_error_m,within_success_radius,navigation_arrived,visual_confirmed,task_success,nav_result,failure_reason
+1,2026-06-15 17:11:00,218.366,Go to the plant.,/home/bluepoisons/Desktop/FURP/VLN/ZhiruiSHEN-VLN/data/runtime/trial_images/trial_0009_20260615_171052_041592169_scan_01_go_to_the_plant.png,"```json
+{
+  ""target"": ""plant"",
+  ""visible"": true,
+  ""confidence"": 0.95,
+  ""horizontal_position"": ""right"",
+  ""evidence"": ""The plant is visibly present in the image, located on the right side of the room, in a black rectangular pot.""
+}
+```",plant,True,0.95,semantic_explore_then_visual_semantic_map_observation_pose,0.35,-2.92,3.141592653589793,amcl_pose,0.237,-2.273,-1.556,0.656,True,True,True,True,success,
+2,2026-06-15 17:11:11,9.047,Move to the potted plant on the floor.,/home/bluepoisons/Desktop/FURP/VLN/ZhiruiSHEN-VLN/data/runtime/trial_images/trial_0010_20260615_171102_776251507_scan_01_move_to_the_potted_plant_on_the_floor.png,"```json
+{
+  ""target"": ""potted plant on the floor"",
+  ""visible"": true,
+  ""confidence"": 0.95,
+  ""horizontal_position"": ""right"",
+  ""evidence"": ""The potted plant is visible on the right side of the image, placed on the floor with a black rectangular pot. The plant is positioned in the upper right quadrant of the frame.""
+}
+```",potted plant on the floor,True,0.95,visual_semantic_map_observation_pose,0.35,-2.92,3.141592653589793,amcl_pose,0.216,-2.53,-1.485,0.412,True,True,True,True,success,
+3,2026-06-15 17:11:22,8.177,Navigate to the green plant near the chair.,/home/bluepoisons/Desktop/FURP/VLN/ZhiruiSHEN-VLN/data/runtime/trial_images/trial_0011_20260615_171114_394479373_scan_01_navigate_to_the_green_plant_near_the_cha.png,"```json
+{
+  ""target"": ""green plant"",
+  ""visible"": true,
+  ""confidence"": 0.95,
+  ""horizontal_position"": ""right"",
+  ""evidence"": ""The green plant is visible in the image, located on the right side of the frame, in a black rectangular pot.""
+}
+```",green plant,True,0.95,visual_semantic_map_observation_pose,0.35,-2.92,3.141592653589793,amcl_pose,0.216,-2.53,-1.485,0.412,True,True,True,True,success,
+4,2026-06-15 17:16:04,279.742,Go to the black office chair.,/home/bluepoisons/Desktop/FURP/VLN/ZhiruiSHEN-VLN/data/runtime/trial_images/trial_0027_20260615_171558_091880318_scan_08_go_to_the_black_office_chair.png,"```json
+{
+  ""target"": ""black office chair"",
+  ""visible"": false,
+  ""confidence"": 0.0,
+  ""horizontal_position"": ""unknown"",
+  ""evidence"": ""The user requested a black office chair, but there is no such object visible in the image. The image shows a warehouse interior with shelves, pallets, and a cart, but no office chair is present.""
+}
+```",black office chair,False,0.0,semantic_explore_visual_scan_failed,0.2,-0.69,3.141592653589793,amcl_pose,0.084,-1.192,1.813,0.515,True,True,False,False,failed,semantic_explore_confirm_failed: target_not_visible_after_visual_scan
+5,2026-06-15 17:18:21,133.969,Move to the chair near the robot.,/home/bluepoisons/Desktop/FURP/VLN/ZhiruiSHEN-VLN/data/runtime/trial_images/trial_0042_20260615_171813_529574116_scan_07_move_to_the_chair_near_the_robot.png,"```json
+{
+  ""target"": ""chair"",
+  ""visible"": true,
+  ""confidence"": 0.95,
+  ""horizontal_position"": ""left"",
+  ""evidence"": ""A black office chair is visible on the left side of the image, partially in the frame.""
+}
+```",chair,True,0.95,semantic_explore_then_visual_semantic_map_observation_pose,0.2,-0.69,3.141592653589793,amcl_pose,0.025,-1.154,2.839,0.496,True,True,True,True,success,
+6,2026-06-15 17:19:00,36.562,Navigate to the chair beside the plant.,/home/bluepoisons/Desktop/FURP/VLN/ZhiruiSHEN-VLN/data/runtime/trial_images/trial_0046_20260615_171852_708583288_scan_04_navigate_to_the_chair_beside_the_plant.png,"```json
+{
+  ""target"": ""chair"",
+  ""visible"": true,
+  ""confidence"": 0.95,
+  ""horizontal_position"": ""left"",
+  ""evidence"": ""A black office chair is visible on the left side of the image, positioned next to the plant.""
+}
+```",chair,True,0.95,visual_semantic_map_observation_pose,0.2,-0.69,3.141592653589793,amcl_pose,0.005,-1.166,3.051,0.515,True,True,True,True,success,

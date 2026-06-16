@@ -12,31 +12,19 @@ class TextToPoseConverter:
         self.min_y = min_y
         self.max_y = max_y
         shelf_pose = (-6.78, 10.96, 0.0)
-        chair_pose = (-0.54, -0.69, 1.57)
-        plant_pose = (-0.43, -2.92, 0.0)
-        self._fallback_targets: Dict[str, Tuple[float, float, float]] = {
-            "shelf area containing purple packages": shelf_pose,
-            "right shelf with purple boxes": shelf_pose,
-            "warehouse rack near the boxes": shelf_pose,
-            "shelf area": shelf_pose,
-            "warehouse rack": shelf_pose,
-            "purple packages": shelf_pose,
-            "purple package": shelf_pose,
-            "package area": shelf_pose,
-            "cart with boxes": shelf_pose,
-            "a cart with boxes": shelf_pose,
-            "purple boxes": shelf_pose,
-            "purple box": shelf_pose,
-            "right shelf": shelf_pose,
-            "rack": shelf_pose,
-            "shelf": shelf_pose,
-            "boxes": shelf_pose,
-            "plant": plant_pose,
-            "black office chair": chair_pose,
-            "office chair": chair_pose,
-            "chair": chair_pose,
-            "robot": (0.0, 0.0, 0.0),
-            "center": (0.0, 0.0, 0.0),
+        shelf_observation_pose = (-6.30, 10.80, 3.141592653589793)
+        object_poses: Dict[str, Tuple[float, float, float]] = {
+            "plant": (-0.43, -2.92, 0.0),
+            "chair": (-0.54, -0.69, 1.57),
+            "shelf_package_area": shelf_pose,
+        }
+        observation_poses: Dict[str, Tuple[float, float, float]] = {
+            # Navigate to a free, side-on camera vantage rather than the object center.
+            # The object-center poses caused post-arrival images to show walls/floor
+            # or chair undersides instead of the requested plant/chair.
+            "plant": (0.35, -2.92, 3.141592653589793),
+            "chair": (0.20, -0.69, 3.141592653589793),
+            "shelf_package_area": shelf_observation_pose,
         }
         self._semantic_alias_groups = {
             "plant": (
@@ -67,6 +55,49 @@ class TextToPoseConverter:
                 "boxes",
             ),
         }
+        self._object_poses = object_poses
+        self._observation_poses = observation_poses
+        self._target_pose_roles: Dict[str, str] = {}
+        plant_pose = observation_poses["plant"]
+        chair_pose = observation_poses["chair"]
+        shelf_alias_pose = observation_poses["shelf_package_area"]
+        self._fallback_targets: Dict[str, Tuple[float, float, float]] = {
+            "shelf area containing purple packages": shelf_alias_pose,
+            "right shelf with purple boxes": shelf_alias_pose,
+            "warehouse rack near the boxes": shelf_alias_pose,
+            "shelf area": shelf_alias_pose,
+            "warehouse rack": shelf_alias_pose,
+            "purple packages": shelf_alias_pose,
+            "purple package": shelf_alias_pose,
+            "package area": shelf_alias_pose,
+            "cart with boxes": shelf_alias_pose,
+            "a cart with boxes": shelf_alias_pose,
+            "purple boxes": shelf_alias_pose,
+            "purple box": shelf_alias_pose,
+            "right shelf": shelf_alias_pose,
+            "rack": shelf_alias_pose,
+            "shelf": shelf_alias_pose,
+            "boxes": shelf_alias_pose,
+            "plant": plant_pose,
+            "black office chair": chair_pose,
+            "office chair": chair_pose,
+            "chair": chair_pose,
+            "robot": (0.0, 0.0, 0.0),
+            "center": (0.0, 0.0, 0.0),
+        }
+        for key in self._fallback_targets:
+            cluster = self.semantic_cluster(key)
+            if cluster in ("plant", "chair", "shelf_package_area"):
+                self._target_pose_roles[key] = "observation_pose"
+            else:
+                self._target_pose_roles[key] = "target_pose"
+        self._ambiguous_instruction_terms = (
+            "target object",
+            "object near the wall",
+            "the object",
+            "an object",
+            "object",
+        )
 
     def convert(self, instruction: str, model_output: str) -> Dict[str, object]:
         """Return dict with x, y, yaw and conversion metadata."""
@@ -150,6 +181,17 @@ class TextToPoseConverter:
         model_target_text = model_target.lower().strip()
         instruction_text = instruction.lower().strip()
 
+        if self.is_ambiguous_instruction(instruction_text) and not self.semantic_cluster(model_target_text):
+            return {
+                "ok": False,
+                "ambiguous": True,
+                "reason": (
+                    "ambiguous_target: instruction does not name a concrete known "
+                    "semantic target. Ask for a target such as plant, chair, shelf, "
+                    "purple boxes, or package area."
+                ),
+            }
+
         parsed = self._resolve_named_target_from_text(model_target_text)
         if parsed is not None:
             return parsed
@@ -186,13 +228,16 @@ class TextToPoseConverter:
                         "ok": False,
                         "reason": f"Resolved target {key!r} is outside safe bounds.",
                     }
+                method = "visual_semantic_map"
+                if self._target_pose_roles.get(key) == "observation_pose":
+                    method = "visual_semantic_map_observation_pose"
                 return {
                     "ok": True,
                     "target": key,
                     "x": x,
                     "y": y,
                     "yaw": yaw,
-                    "method": "visual_semantic_map",
+                    "method": method,
                 }
 
         return None
@@ -203,6 +248,14 @@ class TextToPoseConverter:
             if any(alias in text_lower for alias in aliases):
                 return cluster
         return ""
+
+    def is_ambiguous_instruction(self, text: str) -> bool:
+        text_lower = text.lower().strip()
+        if not text_lower:
+            return False
+        if self.semantic_cluster(text_lower):
+            return False
+        return any(term in text_lower for term in self._ambiguous_instruction_terms)
 
     def targets_share_semantic_cluster(self, first: str, second: str) -> bool:
         first_cluster = self.semantic_cluster(first)

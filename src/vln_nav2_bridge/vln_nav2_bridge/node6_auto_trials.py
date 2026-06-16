@@ -49,6 +49,8 @@ class Node6AutoTrials(Node):
         timeout_sec: float,
         settle_sec: float,
         success_radius_m: float,
+        max_pose_disagreement_m: float = 0.0,
+        abort_on_pose_disagreement: bool = False,
         trial_offset: int = 0,
         total_trial_count: Optional[int] = None,
     ) -> None:
@@ -58,6 +60,8 @@ class Node6AutoTrials(Node):
         self.timeout_sec = timeout_sec
         self.settle_sec = settle_sec
         self.success_radius_m = success_radius_m
+        self.max_pose_disagreement_m = max_pose_disagreement_m
+        self.abort_on_pose_disagreement = abort_on_pose_disagreement
         self.trial_offset = trial_offset
         self.total_trial_count = total_trial_count or len(instructions)
         self.pending_instruction: Optional[str] = None
@@ -106,6 +110,21 @@ class Node6AutoTrials(Node):
             trial_id = self.trial_offset + run_index
             self.pending_instruction = instruction
             self.latest_result = None
+            self._spin_for_pose_update(0.5)
+            health = self._pose_health_snapshot()
+            if (
+                self.abort_on_pose_disagreement
+                and self.max_pose_disagreement_m > 0.0
+                and health.get("pose_disagreement_m") != ""
+                and float(health["pose_disagreement_m"]) > self.max_pose_disagreement_m
+            ):
+                self.get_logger().error(
+                    "Aborting before trial "
+                    f"{trial_id}: AMCL/raw odom disagreement is "
+                    f"{health['pose_disagreement_m']} m > "
+                    f"{self.max_pose_disagreement_m:.2f} m."
+                )
+                break
             self.get_logger().info(
                 f"Trial {trial_id}/{self.total_trial_count}: {instruction}"
             )
@@ -216,6 +235,7 @@ class Node6AutoTrials(Node):
 
     def _append_final_pose_metrics(self, result: Dict[str, object]) -> Dict[str, object]:
         enriched = dict(result)
+        enriched.update(self._pose_health_snapshot())
         pose_source = "amcl_pose" if self.latest_pose is not None else "odom"
         pose = self.latest_pose or self.latest_odom_pose
         if pose is None:
@@ -264,6 +284,31 @@ class Node6AutoTrials(Node):
         )
         return enriched
 
+    def _pose_health_snapshot(self) -> Dict[str, object]:
+        health: Dict[str, object] = {
+            "amcl_x": "",
+            "amcl_y": "",
+            "odom_x": "",
+            "odom_y": "",
+            "pose_disagreement_m": "",
+            "pose_health_ok": "",
+        }
+        if self.latest_pose is not None:
+            health["amcl_x"] = round(self.latest_pose["x"], 3)
+            health["amcl_y"] = round(self.latest_pose["y"], 3)
+        if self.latest_odom_pose is not None:
+            health["odom_x"] = round(self.latest_odom_pose["x"], 3)
+            health["odom_y"] = round(self.latest_odom_pose["y"], 3)
+        if self.latest_pose is not None and self.latest_odom_pose is not None:
+            disagreement = math.hypot(
+                self.latest_pose["x"] - self.latest_odom_pose["x"],
+                self.latest_pose["y"] - self.latest_odom_pose["y"],
+            )
+            health["pose_disagreement_m"] = round(disagreement, 3)
+            if self.max_pose_disagreement_m > 0.0:
+                health["pose_health_ok"] = disagreement <= self.max_pose_disagreement_m
+        return health
+
     def _spin_for_pose_update(self, duration_sec: float) -> None:
         deadline = time.monotonic() + max(0.0, duration_sec)
         while time.monotonic() < deadline and rclpy.ok():
@@ -287,6 +332,12 @@ class Node6AutoTrials(Node):
             "target_x",
             "target_y",
             "target_yaw",
+            "amcl_x",
+            "amcl_y",
+            "odom_x",
+            "odom_y",
+            "pose_disagreement_m",
+            "pose_health_ok",
             "final_pose_source",
             "final_x",
             "final_y",
@@ -400,6 +451,17 @@ def main() -> None:
     parser.add_argument("--settle-sec", type=float, default=2.0)
     parser.add_argument("--success-radius-m", type=float, default=0.8)
     parser.add_argument(
+        "--max-pose-disagreement-m",
+        type=float,
+        default=0.0,
+        help="Record pose health against this AMCL/raw-odom distance threshold; 0 disables thresholding.",
+    )
+    parser.add_argument(
+        "--abort-on-pose-disagreement",
+        action="store_true",
+        help="Stop before publishing the next trial if pose disagreement exceeds the threshold.",
+    )
+    parser.add_argument(
         "--start-index",
         type=int,
         default=1,
@@ -425,6 +487,8 @@ def main() -> None:
         timeout_sec=args.timeout_sec,
         settle_sec=args.settle_sec,
         success_radius_m=args.success_radius_m,
+        max_pose_disagreement_m=args.max_pose_disagreement_m,
+        abort_on_pose_disagreement=args.abort_on_pose_disagreement,
         trial_offset=args.start_index - 1,
         total_trial_count=len(instructions),
     )

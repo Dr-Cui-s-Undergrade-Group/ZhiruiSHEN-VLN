@@ -1,0 +1,10 @@
+trial_id,timestamp,duration_sec,instruction,image_path,model_output,model_target,visible,confidence,parse_method,target_x,target_y,target_yaw,final_pose_source,final_x,final_y,final_yaw,final_error_m,within_success_radius,navigation_arrived,visual_confirmed,task_success,nav_result,failure_reason
+1,2026-06-15 16:55:18,110.205,Go to the plant.,/home/bluepoisons/Desktop/FURP/VLN/ZhiruiSHEN-VLN/data/runtime/trial_images/trial_0001_20260615_165328_698232653_scan_01_go_to_the_plant.png,"```json
+{
+  ""target"": ""plant"",
+  ""visible"": true,
+  ""confidence"": 0.85,
+  ""horizontal_position"": ""left"",
+  ""evidence"": ""A small potted plant with green leaves is visible on the floor in the background, near a chair.""
+}
+```",plant,True,0.85,visual_semantic_map_observation_pose,0.35,-2.92,3.141592653589793,amcl_pose,-6.556,10.525,-1.695,15.115,False,False,True,False,stuck,Nav2 made no meaningful progress for 45.0s (best_distance=15.18m).

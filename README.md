@@ -6,13 +6,13 @@
 
 重启电脑后可先参考环境快速恢复手册：[reset.md](reset.md)
 
-## 当前进度总览（2026-06-13）
+## 当前进度总览（2026-06-15）
 
 | 节点 | 状态 | 主要产出 |
 |---|---|---|
 | Node 1-5 | 已完成 | Isaac Sim/ROS 2 通信、Nav2 基础导航、本地 Qwen3-VL 感知、VLN-Nav2 bridge。 |
-| Node 6 | 已完成 | 15 条 integrated simulation evaluation、最终 CSV、failure taxonomy 和复现实验报告。 |
-| Node 7 | 已完成 | 指标拆分、shelf/package 语义确认修复、safe-start/safe-goal/dynamic timeout 扩展和 ablation report。 |
+| Node 6 | 已完成 | 15 条 integrated simulation evaluation、最终 CSV、failure taxonomy、复现实验报告和结果图表。 |
+| Node 7 | 已完成 | 指标拆分、shelf/package 语义确认修复、safe-start/safe-goal/dynamic timeout、ablation report 和 safe recovery replay。 |
 | Node 8 | 下一步 | 汇总 Node 6/7 仿真结果，生成最终报告、图表和 poster 可复用材料。 |
 | Node 9 | 待开始 | 迁移到实体机器人并整理部署指南。 |
 
@@ -22,9 +22,41 @@ Node 6/7 已经收尾，不需要继续按 Node 6 blocker 重跑。后续工作�
 data/node6_auto_trials_2026-06-13_final.csv
 data/node7_ablation_2026-06-13.csv
 data/node7_safe_navigation_checks_2026-06-13.csv
+data/node7_safe_recovery_replay_2026-06-15.csv
+data/node7_online_trials_clean_2026-06-15.csv
 docs/node6_final_report.md
 docs/node7_ablation_report.md
+docs/node7_safe_recovery_note.md
+docs/node7_online_clean_rerun_report.md
+docs/literature_alignment_note.md
+docs/node7_observation_pose_note.md
 ```
+
+### Node 6/7 最终结果摘要
+
+| 指标 | 结果 | 说明 |
+|---|---:|---|
+| Node 6 strict bridge success | 7/15 | 原始严格确认逻辑下的端到端成功数。 |
+| Node 6 physical arrival | 11/15 | 机器人末端位姿进入 0.8 m 成功半径。 |
+| Node 7 offline optimized task success | 11/15 | 基于 Node 6 final CSV 的指标拆分 + shelf/package relaxed confirmation 离线复算。 |
+| Node 7 clean online task success | 8/15 | 2026-06-15 完整在线 clean rerun，严格 visual task success。 |
+| Node 7 clean online physical arrival | 13/15 | 同一在线 rerun 中最终位姿进入 0.8 m 成功半径。 |
+| Node 7 observation-pose targeted task success | 5/6 | 2026-06-15 clean targeted rerun，plant/chair observation pose 验证。 |
+| Node 7 relaxed shelf confirmations | 4 | 修复 Trials 8-11 的 shelf/package 语义确认 undercount。 |
+| Node 7 offline remaining failures | 4/15 | 离线复算中仍未解决的模糊目标或视觉/语义地图确认失败。 |
+| Node 7 clean online strict failures | 7/15 | 在线严格 task failure；其中 5/7 已到达目标半径但视觉确认失败，2/7 为模糊目标拒绝。 |
+
+关键图表：
+
+```text
+assets/node6_target_vs_final_pose.png
+assets/node6_failure_taxonomy.png
+assets/node7_ablation_comparison.png
+```
+
+补充说明：Node 7 的 A/B/C ablation 是对固定 Node 6 final CSV 的离线 metric/logic ablation，不代表三组完整在线重跑。完整在线证据见 `data/node7_online_trials_clean_2026-06-15.csv` 和 `docs/node7_online_clean_rerun_report.md`。
+
+2026-06-15 已完成 Node 7 clean online rerun。严格 task success 为 8/15，最终位姿进入 0.8 m 半径为 13/15。该结果可用于 poster/paper，但必须同时报告 physical arrival 与 visual task success，不能写成完美 15/15。
 
 <a id="zh"></a>
 

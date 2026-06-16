@@ -1,0 +1,4 @@
+case,source_pose_x,source_pose_y,source_yaw,center_state,free_ratio,safe_threshold,safe,recovery_required,recovery_x,recovery_y,recovery_free_ratio,recovery_distance_m,downstream_goal,downstream_goal_safe,notes
+shelf_edge_start_from_node6, -6.760,10.780,0.000,free,0.920,0.950,False,True,-6.725,10.815,0.973,0.050,chair,True,"Node 7 safe-start policy detects the shelf-edge stop as below the free-ratio threshold and selects a nearby free recovery candidate before returning to chair."
+occupied_start_from_node6,-1.061,-1.730,1.692,occupied,0.451,0.950,False,True,-1.290,-1.465,0.956,0.350,chair,True,"Node 7 safe-start policy detects the earlier occupied start pose and selects a nearby free recovery candidate."
+chair_goal,-0.540,-0.690,1.570,free,1.000,0.950,True,False,-0.540,-0.690,1.000,0.000,chair,True,"Default chair target remains unchanged by safe-goal validation."

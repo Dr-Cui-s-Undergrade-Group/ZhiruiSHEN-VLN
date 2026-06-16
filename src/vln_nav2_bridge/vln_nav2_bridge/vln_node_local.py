@@ -18,7 +18,7 @@ from rclpy.parameter import Parameter
 from nav_msgs.msg import Odometry
 from sensor_msgs.msg import CompressedImage, Image
 from std_msgs.msg import String
-from geometry_msgs.msg import PoseStamped, Twist
+from geometry_msgs.msg import PoseStamped, PoseWithCovarianceStamped, Twist
 from nav2_simple_commander.robot_navigator import BasicNavigator, TaskResult
 
 from .node6_map_preflight import DEFAULT_MAP_YAML, SimpleOccupancyMap
@@ -51,6 +51,7 @@ class VLNBridgeNodeLocal(Node):
             "/home/bluepoisons/Desktop/FURP/VLN/ZhiruiSHEN-VLN/data/test_samples/warehouse_photo1.png",
         )
         self.declare_parameter("instruction_topic", "/vln_instruction")
+        self.declare_parameter("pose_topic", "/amcl_pose")
         self.declare_parameter("odom_topic", "/chassis/odom")
         self.declare_parameter("goal_frame", "map")
         self.declare_parameter("max_new_tokens", 256)
@@ -115,6 +116,7 @@ class VLNBridgeNodeLocal(Node):
         self.declare_parameter("nav_stuck_recovery_backup_duration_sec", 1.0)
         self.declare_parameter("nav_stuck_recovery_turn_speed_rad_s", 0.35)
         self.declare_parameter("nav_stuck_recovery_turn_duration_sec", 1.0)
+        self.declare_parameter("nav_accept_with_feedback_distance", True)
         self.declare_parameter("safe_map_validation_enabled", True)
         self.declare_parameter("safe_map_yaml", DEFAULT_MAP_YAML)
         self.declare_parameter("safe_start_enabled", True)
@@ -142,6 +144,7 @@ class VLNBridgeNodeLocal(Node):
         self.model_path = self.get_parameter("model_path").value
         self.image_path = self.get_parameter("image_path").value
         self.instruction_topic = self.get_parameter("instruction_topic").value
+        self.pose_topic = self.get_parameter("pose_topic").value
         self.odom_topic = self.get_parameter("odom_topic").value
         self.goal_frame = self.get_parameter("goal_frame").value
         self.max_new_tokens = int(self.get_parameter("max_new_tokens").value)
@@ -222,6 +225,9 @@ class VLNBridgeNodeLocal(Node):
         self.nav_stuck_recovery_turn_duration_sec = float(
             self.get_parameter("nav_stuck_recovery_turn_duration_sec").value
         )
+        self.nav_accept_with_feedback_distance = self._as_bool(
+            self.get_parameter("nav_accept_with_feedback_distance").value
+        )
         self.safe_map_validation_enabled = self._as_bool(
             self.get_parameter("safe_map_validation_enabled").value
         )
@@ -281,9 +287,13 @@ class VLNBridgeNodeLocal(Node):
         self.sub = None
         self.image_sub = None
         self.compressed_image_sub = None
+        self.pose_sub = None
         self.odom_sub = None
         self.latest_image_path = None
         self.latest_image_wall_time = 0.0
+        self.latest_map_x = None
+        self.latest_map_y = None
+        self.latest_map_wall_time = 0.0
         self.latest_odom_x = None
         self.latest_odom_y = None
         self.latest_odom_wall_time = 0.0
@@ -358,6 +368,13 @@ class VLNBridgeNodeLocal(Node):
                 10,
                 callback_group=self.instruction_callback_group,
             )
+            self.pose_sub = self.create_subscription(
+                PoseWithCovarianceStamped,
+                self.pose_topic,
+                self._on_pose,
+                10,
+                callback_group=self.image_callback_group,
+            )
             self.odom_sub = self.create_subscription(
                 Odometry,
                 self.odom_topic,
@@ -379,6 +396,7 @@ class VLNBridgeNodeLocal(Node):
                 f"visual_scan_steps={self.visual_scan_steps}, "
                 f"visual_scan_spin_mode={self.visual_scan_spin_mode}, "
                 f"semantic_exploration_enabled={self.semantic_exploration_enabled}, "
+                f"pose_topic={self.pose_topic}, "
                 f"odom_topic={self.odom_topic}, "
                 f"nav_retry_on_stuck={self.nav_retry_on_stuck}, "
                 f"nav_max_retries={self.nav_max_retries}"
@@ -411,6 +429,32 @@ class VLNBridgeNodeLocal(Node):
         model_json = None
         started_at = time.time()
         semantic_explored = False
+
+        if self.converter.is_ambiguous_instruction(instruction):
+            failure_reason = (
+                "ambiguous_target: instruction does not name a concrete known "
+                "semantic target. Ask for plant, chair, shelf, purple boxes, "
+                "or package area."
+            )
+            self.get_logger().warning(failure_reason)
+            result_payload = self._build_trial_result(
+                instruction=instruction,
+                image_path=image_path,
+                model_output=model_output,
+                model_json=None,
+                parse_method="ambiguous_target",
+                x=0.0,
+                y=0.0,
+                yaw=0.0,
+                nav_result="failed",
+                failure_reason=failure_reason,
+                started_at=started_at,
+                navigation_arrived=False,
+                visual_confirmed=False,
+                task_success=False,
+            )
+            self._publish_and_log_result(result_payload)
+            return
 
         if self.visual_scan_enabled:
             scan_result = self._visual_scan_for_target(instruction=instruction)
@@ -817,21 +861,25 @@ class VLNBridgeNodeLocal(Node):
             now = time.monotonic()
             if feedback:
                 feedback_distance = float(feedback.distance_remaining)
-                odom_distance = self._distance_from_latest_odom(pose)
-                distance_for_progress = (
-                    odom_distance if odom_distance is not None else feedback_distance
+                map_distance = self._distance_from_latest_map_pose(pose)
+                diagnostic_odom_distance = self._distance_from_latest_odom(pose)
+                distance_for_progress = feedback_distance
+                accept_distance = (
+                    feedback_distance
+                    if self.nav_accept_with_feedback_distance
+                    else map_distance
                 )
                 if (
                     self.nav_accept_distance_m > 0.0
-                    and odom_distance is not None
-                    and odom_distance <= self.nav_accept_distance_m
+                    and accept_distance is not None
+                    and accept_distance <= self.nav_accept_distance_m
                 ):
                     if within_acceptance_since is None:
                         within_acceptance_since = now
                     elif now - within_acceptance_since >= self.nav_accept_distance_hold_sec:
                         self.get_logger().info(
                             "Accepting Nav2 goal by distance: "
-                            f"odom_distance={odom_distance:.2f}m <= "
+                            f"distance={accept_distance:.2f}m <= "
                             f"{self.nav_accept_distance_m:.2f}m for "
                             f"{self.nav_accept_distance_hold_sec:.1f}s."
                         )
@@ -874,14 +922,21 @@ class VLNBridgeNodeLocal(Node):
                 and now - last_feedback_log_at >= self.nav_feedback_log_interval_sec
             ):
                 last_feedback_log_at = now
-                odom_distance = self._distance_from_latest_odom(pose)
+                map_distance = self._distance_from_latest_map_pose(pose)
+                diagnostic_odom_distance = self._distance_from_latest_odom(pose)
+                map_text = (
+                    f", amcl_to_goal={map_distance:.2f} m"
+                    if map_distance is not None
+                    else ""
+                )
                 odom_text = (
-                    f", odom_to_goal={odom_distance:.2f} m"
-                    if odom_distance is not None
+                    f", raw_odom_to_goal={diagnostic_odom_distance:.2f} m"
+                    if diagnostic_odom_distance is not None
                     else ""
                 )
                 self.get_logger().info(
-                    f"Distance remaining: {feedback.distance_remaining:.2f} m{odom_text}"
+                    f"Distance remaining: {feedback.distance_remaining:.2f} m"
+                    f"{map_text}{odom_text}"
                 )
             time.sleep(0.05)
 
@@ -907,6 +962,16 @@ class VLNBridgeNodeLocal(Node):
         return math.hypot(
             float(pose.pose.position.x) - float(self.latest_odom_x),
             float(pose.pose.position.y) - float(self.latest_odom_y),
+        )
+
+    def _distance_from_latest_map_pose(self, pose: PoseStamped) -> Optional[float]:
+        if self.latest_map_x is None or self.latest_map_y is None:
+            return None
+        if time.monotonic() - self.latest_map_wall_time > 2.0:
+            return None
+        return math.hypot(
+            float(pose.pose.position.x) - float(self.latest_map_x),
+            float(pose.pose.position.y) - float(self.latest_map_y),
         )
 
     def _load_safe_occupancy_map(self) -> Optional[SimpleOccupancyMap]:
@@ -969,15 +1034,15 @@ class VLNBridgeNodeLocal(Node):
             or self._safe_start_recovery_active
         ):
             return None
-        if self.latest_odom_x is None or self.latest_odom_y is None:
+        if self.latest_map_x is None or self.latest_map_y is None:
             return None
-        if time.monotonic() - self.latest_odom_wall_time > 2.0:
+        if time.monotonic() - self.latest_map_wall_time > 2.0:
             return None
 
         check = self.occupancy_map.check_pose(
             name="safe_start",
-            x=float(self.latest_odom_x),
-            y=float(self.latest_odom_y),
+            x=float(self.latest_map_x),
+            y=float(self.latest_map_y),
             yaw=0.0,
             radius_m=self.safe_pose_check_radius_m,
         )
@@ -985,8 +1050,8 @@ class VLNBridgeNodeLocal(Node):
             return None
 
         nearest = self.occupancy_map.find_nearest_free_pose(
-            x=float(self.latest_odom_x),
-            y=float(self.latest_odom_y),
+            x=float(self.latest_map_x),
+            y=float(self.latest_map_y),
             yaw=0.0,
             radius_m=self.safe_pose_check_radius_m,
             min_free_ratio=self.safe_pose_min_free_ratio,
@@ -1022,7 +1087,7 @@ class VLNBridgeNodeLocal(Node):
         if not self.dynamic_timeout_enabled:
             return self.nav_timeout_sec
 
-        distance = self._distance_from_latest_odom(pose)
+        distance = self._distance_from_latest_map_pose(pose)
         if distance is None:
             return self.nav_timeout_sec
 
@@ -1440,6 +1505,12 @@ class VLNBridgeNodeLocal(Node):
             self._save_live_image(image)
         except Exception as exc:
             self.get_logger().warning(f"Failed to decode compressed image: {exc}")
+
+    def _on_pose(self, msg: PoseWithCovarianceStamped) -> None:
+        pose = msg.pose.pose
+        self.latest_map_x = float(pose.position.x)
+        self.latest_map_y = float(pose.position.y)
+        self.latest_map_wall_time = time.monotonic()
 
     def _on_odom(self, msg: Odometry) -> None:
         pose = msg.pose.pose

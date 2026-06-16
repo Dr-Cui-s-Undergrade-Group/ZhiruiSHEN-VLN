@@ -31,6 +31,25 @@ nav_timeout_sec:=900.0
 | Visual target marked visible | 11/15 |
 | Mean final error over all trials | 0.697 m |
 
+## Result Figures
+
+![Node 6 target vs final pose](../assets/node6_target_vs_final_pose.png)
+
+![Node 6 failure taxonomy](../assets/node6_failure_taxonomy.png)
+
+## Metric Definitions
+
+Node 6 intentionally reports both bridge-level success and physical arrival. These are different signals:
+
+| Metric | Definition | Node 6 value | Interpretation |
+|---|---|---:|---|
+| `bridge_success` | The bridge returned `nav_result=success`. | 7/15 | End-to-end success under the original strict confirmation logic. |
+| `navigation_arrived` | The final robot pose is within 0.8 m of the intended target coordinate. | 11/15 | Nav2 physically reached the target area in most evaluated cases. |
+| `visual_grounded` | The model/semantic map produced a usable target or visible target evidence. | 11/15 visible, 7/15 accepted by strict logic | The main gap is semantic confirmation, not low-level navigation. |
+| `task_success` | The robot arrived and the system accepted the visual/semantic confirmation. | 7/15 before Node 7 | This is the strict baseline that Node 7 improves. |
+
+This distinction matters because Trials 8-11 are not Nav2 failures. They reached the shelf/package area, but the post-arrival confirmation rejected semantically equivalent evidence such as purple packages or cart-with-boxes.
+
 ## Parse / Grounding Methods
 
 | Method | Count |
@@ -77,3 +96,28 @@ nav_timeout_sec:=900.0
 Node 6 now has a reproducible integrated simulation evaluation with 15 trials. The navigation stack is usable after the AMCL/TF and timeout corrections: 11/15 trials ended within the configured success radius, and trials 8-11 physically arrived at the shelf/package area even though the bridge returned failure.
 
 The remaining blocker is not primarily Nav2. The strongest Node 7 defect is semantic confirmation around shelf-like targets: the model can observe purple packages or a cart with purple boxes, but the confirmation logic still rejects the trial when the literal shelf is not visible. Node 7 should separate `navigation_arrived` from `visual_confirmed` and broaden shelf/package-area confirmation aliases.
+
+## Poster-Ready Summary
+
+Node 6 completed 15 language-conditioned Isaac Sim navigation trials using real-time camera input, local Qwen3-VL inference, semantic target mapping, and Nav2 execution. The strict bridge success rate was 7/15, while 11/15 trials physically reached the target radius. The four-trial gap exposed a clear system limitation: shelf/package-area tasks were navigationally successful but failed visual confirmation because the evaluator required literal shelf evidence instead of accepting semantically equivalent package-area cues. This finding directly motivates the Node 7 metric split and relaxed semantic confirmation improvement.
+
+## Reproduction Commands
+
+Regenerate the Node 6/7 result figures:
+
+```bash
+cd /home/bluepoisons/Desktop/FURP/VLN/ZhiruiSHEN-VLN
+python3 src/analysis/plot_node6_node7_results.py
+```
+
+Rerun the full Node 6/7 online evaluation after Isaac Sim, `/scan`, Nav2, AMCL, and the VLN bridge are already running:
+
+```bash
+source /opt/ros/humble/setup.bash
+cd /home/bluepoisons/Desktop/FURP/VLN/ZhiruiSHEN-VLN
+source install/setup.bash
+ros2 run vln_nav2_bridge node6_auto_trials -- \
+  --output data/node7_online_trials_2026-06-15.csv \
+  --timeout-sec 900.0 \
+  --settle-sec 2.0
+```

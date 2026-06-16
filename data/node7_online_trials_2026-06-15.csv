@@ -1,0 +1,19 @@
+trial_id,timestamp,duration_sec,instruction,image_path,model_output,model_target,visible,confidence,parse_method,target_x,target_y,target_yaw,final_pose_source,final_x,final_y,final_yaw,final_error_m,within_success_radius,navigation_arrived,visual_confirmed,task_success,nav_result,failure_reason
+1,2026-06-15 15:04:36,113.365,Go to the plant.,/home/bluepoisons/Desktop/FURP/VLN/ZhiruiSHEN-VLN/data/runtime/trial_images/trial_0008_20260615_150345_503436418_scan_08_go_to_the_plant.png,"```json
+{
+  ""target"": ""plant"",
+  ""visible"": false,
+  ""confidence"": 0.0,
+  ""horizontal_position"": ""unknown"",
+  ""evidence"": ""The image shows a warehouse interior with a forklift or pallet truck in the foreground. There is no plant visible in the image.""
+}
+```",plant,False,0.0,semantic_explore_failed,-0.43,-2.92,0.0,amcl_pose,0.011,0.019,0.61,2.971,False,False,False,False,stuck,Nav2 made no meaningful progress for 45.0s (best_distance=0.45m).
+2,2026-06-15 15:06:35,115.816,Move to the potted plant on the floor.,/home/bluepoisons/Desktop/FURP/VLN/ZhiruiSHEN-VLN/data/runtime/trial_images/trial_0016_20260615_150543_230284160_scan_08_move_to_the_potted_plant_on_the_floor.png,"```json
+{
+  ""target"": ""potted plant on the floor"",
+  ""visible"": false,
+  ""confidence"": 0.0,
+  ""horizontal_position"": ""unknown"",
+  ""evidence"": ""There is no potted plant visible on the floor in the image. The image shows a warehouse environment with a cart and a wall with electrical boxes, but no potted plant is present.""
+}
+```",potted plant on the floor,False,0.0,semantic_explore_failed,-0.43,-2.92,0.0,amcl_pose,0.001,-0.005,0.813,2.946,False,False,False,False,stuck,Nav2 made no meaningful progress for 45.0s (best_distance=0.40m).

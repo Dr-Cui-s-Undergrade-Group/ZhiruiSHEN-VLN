@@ -1,0 +1,6 @@
+Go to the plant.
+Move to the potted plant on the floor.
+Navigate to the green plant near the chair.
+Go to the black office chair.
+Move to the chair near the robot.
+Navigate to the chair beside the plant.
