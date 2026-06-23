@@ -1,0 +1,11 @@
+trial_id,timestamp,duration_sec,instruction,image_path,model_output,model_target,visible,confidence,parse_method,target_x,target_y,target_yaw,amcl_x,amcl_y,odom_x,odom_y,pose_disagreement_m,pose_health_ok,final_pose_source,final_x,final_y,final_yaw,final_error_m,within_success_radius,navigation_arrived,visual_confirmed,target_seen_during_nav,target_seen_during_nav_image,final_visual_confirmed,active_search_used,task_success,nav_result,failure_reason
+
+1,2026-06-23 14:46:50,1036.451,Go to the purple boxes.,/home/bluepoisons/Desktop/FURP/VLN/ZhiruiSHEN-VLN/data/runtime/trial_images/trial_0008_20260623_143036_707428707_scan_08_go_to_the_purple_boxes.png,"```json
+{
+  ""target"": ""purple boxes"",
+  ""visible"": false,
+  ""confidence"": 0.0,
+  ""horizontal_position"": ""unknown"",
+  ""evidence"": ""The image shows an empty warehouse interior with a gray floor, white brick walls, and yellow upper sections. There are no purple boxes visible in the image.""
+}
+```",purple boxes,False,0.0,semantic_explore_failed,-6.3,10.8,3.141592653589793,-5.633,10.029,1.666,10.263,7.303,False,amcl_pose,-5.633,10.029,2.644,1.019,False,False,False,True,/home/bluepoisons/Desktop/FURP/VLN/ZhiruiSHEN-VLN/data/runtime/trial_images/trial_0009_20260623_143220_668958412_during_nav_go_to_the_purple_boxes.png,False,False,False,timeout,Nav2 task exceeded nav_timeout_sec=920.2.

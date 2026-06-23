@@ -6,17 +6,17 @@
 
 重启电脑后可先参考环境快速恢复手册：[reset.md](reset.md)
 
-## 当前进度总览（2026-06-15）
+## 当前进度总览（2026-06-23）
 
 | 节点 | 状态 | 主要产出 |
 |---|---|---|
 | Node 1-5 | 已完成 | Isaac Sim/ROS 2 通信、Nav2 基础导航、本地 Qwen3-VL 感知、VLN-Nav2 bridge。 |
 | Node 6 | 已完成 | 15 条 integrated simulation evaluation、最终 CSV、failure taxonomy、复现实验报告和结果图表。 |
 | Node 7 | 已完成 | 指标拆分、shelf/package 语义确认修复、safe-start/safe-goal/dynamic timeout、ablation report 和 safe recovery replay。 |
-| Node 8 | 下一步 | 汇总 Node 6/7 仿真结果，生成最终报告、图表和 poster 可复用材料。 |
+| Node 8 | targeted case 已打通，AMCL 待继续 | Nav2 长距离导航调参：motion-compensated rolling scan + RPP + odom-truth baseline 已完成 origin -> purple boxes，并通过 strict final visual confirmation；AMCL 长距离定位仍需继续修。 |
 | Node 9 | 待开始 | 迁移到实体机器人并整理部署指南。 |
 
-Node 6/7 已经收尾，不需要继续按 Node 6 blocker 重跑。后续工作应从 Node 8 开始，基于以下文件整理最终仿真报告：
+Node 6/7 已经收尾，不需要继续按 Node 6 blocker 重跑。2026-06-23 起，Node 8 的优先级调整为 Nav2 长距离导航调参：先解决 shelf/package/purple boxes 等远距离目标只能近距离成功的问题，再整理最终报告和 poster 材料。已有仿真证据仍基于以下文件：
 
 ```text
 data/node6_auto_trials_2026-06-13_final.csv
@@ -30,6 +30,8 @@ docs/node7_safe_recovery_note.md
 docs/node7_online_clean_rerun_report.md
 docs/literature_alignment_note.md
 docs/node7_observation_pose_note.md
+docs/status_transfer_2026-06-16.txt
+logs/week(2026-06-22-2026-06-28).md
 ```
 
 ### Node 6/7 最终结果摘要
@@ -57,6 +59,189 @@ assets/node7_ablation_comparison.png
 补充说明：Node 7 的 A/B/C ablation 是对固定 Node 6 final CSV 的离线 metric/logic ablation，不代表三组完整在线重跑。完整在线证据见 `data/node7_online_trials_clean_2026-06-15.csv` 和 `docs/node7_online_clean_rerun_report.md`。
 
 2026-06-15 已完成 Node 7 clean online rerun。严格 task success 为 8/15，最终位姿进入 0.8 m 半径为 13/15。该结果可用于 poster/paper，但必须同时报告 physical arrival 与 visual task success，不能写成完美 15/15。
+
+2026-06-16 的最新 full clean observation-pose evaluation 是当前更保守的长距离导航 baseline：严格 task success 为 5/15，physical arrival 为 6/15，visual confirmed 为 6/15。不要把 2026-06-15 targeted plant/chair 的 5/6 结果写成 full 15-trial 结果。
+
+### Node 8 Nav2 长距离调参依据
+
+当前长距离失败更像 localization / controller / costmap 闭环问题，而不是单纯 VLM 量化问题。2026-06-16 targeted health test 中，`Go to the purple boxes.` 最终 AMCL pose 为 `(-3.105, 3.495)`，raw odom 为 `(-1.226, 5.745)`，AMCL/odom disagreement 达到 `2.932 m`，最终误差 `7.973 m`。
+
+第一轮 Nav2 修改见 `config/nav2_params_custom.yaml`：`controller_server.FollowPath` 已从 DWB (`dwb_core::DWBLocalPlanner`) 切换为 Regulated Pure Pursuit (`nav2_regulated_pure_pursuit_controller::RegulatedPurePursuitController`)。RPP v1 暴露出 slow rotate-to-heading 导致几乎不动的问题；RPP v2 关闭 `use_rotate_to_heading` 后可以持续移动，但 2026-06-23 purple-box health test 仍出现 AMCL/odom disagreement `9.094 m`，所以后续重点转向 AMCL scan update 和粒子滤波稳定性。对应 CSV：
+
+```text
+data/node8_rpp_purple_boxes_health_2026-06-23.csv
+data/node8_rpp_v2_purple_boxes_health_2026-06-23.csv
+```
+
+参考来源：
+
+- Nav2 Regulated Pure Pursuit 配置：<https://docs.nav2.org/configuration/packages/configuring-regulated-pp.html>
+- Nav2 Regulated Pure Pursuit 插件源码：<https://github.com/ros-navigation/navigation2/tree/main/nav2_regulated_pure_pursuit_controller>
+- Regulated Pure Pursuit 论文：<https://arxiv.org/abs/2305.20026>
+- Nav2 AMCL 配置：<https://docs.nav2.org/configuration/packages/configuring-amcl.html>
+- Nav2 costmap / inflation tuning：<https://docs.nav2.org/tuning/index.html>
+
+### Node 8 最新状态（2026-06-23 晚）
+
+当前结论：Node 8 的 purple-box targeted 长距离链路已经在 odom-truth localization baseline 下跑通，并且在 Isaac Sim 重启后复现成功；AMCL 长距离定位仍未解决。严格 VLN task success 仍必须是 `navigation_arrived AND visual_confirmed`，仅 Nav2 到达不能算最终成功。
+
+2026-06-23 20:23 CST 追加：bridge 已加入 `semantic_nav_first_enabled`。对已知远距离语义目标，系统会先导航到 semantic observation pose，再做 final visual scan；不再从起点先做 8-step 360-degree visual scan。这个策略与 VLFM / VL-Nav / 3D-Aware ObjectNav 中“移动过程中收集视觉证据、到达候选区后确认目标”的思路一致，但本项目仍保持严格成功条件：`task_success = navigation_arrived AND final_visual_confirmed`。
+
+同次修复还禁止 live camera 配置下回退到静态测试图：如果 `image_topic` 或 `compressed_image_topic` 已配置但没有新鲜 live image，bridge 会报错，而不会使用 `data/test_samples/warehouse_photo1.png` 作为视觉证据。这样避免“视觉 confirmed”来自静态图片而不是 Isaac 当前相机。
+
+本次现场验证结果：
+
+- 已验证：`semantic_nav_first` 分支生效，日志显示 `Skipping initial visual scan; final visual confirmation remains required.`
+- 已验证：代码语法检查和 `colcon build --packages-select vln_nav2_bridge --symlink-install` 通过。
+- 未完成：当前非 clean 状态下，Nav2 从 raw odom 约 `(0.40, -1.44)` 出发仍向远离目标方向漂移，45 秒 stuck 后 retry 仍无有效进展；该 run 被手动中断，不能计入成功。
+- 下一次必须从 clean Isaac reset/origin/yaw 状态重新测试单条 purple-box strict run，再扩展 6 条 subset 和 full 15 条。
+- push 前清理：删除了本地 rerun 用的 runtime instruction 临时文件和 Python `__pycache__`；保留 README/logs 直接引用的 Node 8 CSV 证据文件。
+
+新增实现：
+
+- `src/vln_nav2_bridge/vln_nav2_bridge/node8_scan_accumulator.py` 从 v1 更新为 motion-compensated accumulator：
+  - incoming `/front_3d_lidar/lidar_points` 先转到固定帧 `fixed_frame=odom`；
+  - 发布 `/scan` 前再转到当前 `target_frame=base_link`；
+  - 高度过滤和 LaserScan 投影在当前 `base_link` 下完成。
+- 这样避免旧版本把历史点云缓存为旧 `base_link` 坐标，导致移动/转弯时产生 scan 拖影。
+
+配置更新：
+
+- `amcl.transform_tolerance` 从 `2.0` 降到 `0.2`，解决 Nav2 重启后 `map->base_link` 查 TF 时被 future-dated `map->odom` 卡住的问题。
+- `global_costmap.plugins` 改为 `["static_layer", "inflation_layer"]`，不再把 rolling `/scan` 作为 global obstacle source；rolling scan 保留给 AMCL 和 local costmap。
+- v4 曾重新启用 RPP `use_rotate_to_heading: true`，但 clean reset 后只产生长时间纯旋转，raw odom 几乎不平移，AMCL 却漂移超过 1 m，因此该方向已废弃。
+- 当前 v5 配置为 `use_rotate_to_heading: false`，并把 AMCL 更新阈值调为 `update_min_a: 0.15`、`update_min_d: 0.08`。
+- 当前定位诊断配置已切到 odom-truth baseline：`amcl.tf_broadcast: false`。运行 Nav2 前必须额外启动 static `map -> odom` identity TF。
+
+最新验证记录：
+
+- reset/origin 长距离 pure Nav2 曾在约 `243 s` 后中断：
+  - feedback 约 `13.16 m`
+  - AMCL 约 `(1.91, 0.67)`，raw odom 约 `(-0.65, 2.40)`
+  - AMCL/odom disagreement 约 `3.08 m`
+- motion-compensated accumulator 后，当前位置 scan 质量为 `723/723` finite beams。
+- 中途污染状态下的两次继续测试仍未到达目标：
+  - global obstacle layer enabled：约 `406 s` 中断，目标误差仍约 `8.4 m`
+  - global static-only：约 `106 s` 中断，目标误差仍约 `8.4-8.8 m`
+- 这些中途测试只能说明配置方向和问题现象，不能替代 clean reset/origin 验证。
+- 2026-06-23 reset 后的 v4 clean test 证明 rotate-to-heading 不适合当前 Isaac setup：
+  - `cmd_vel` 约为纯旋转 `linear.x=0.0, angular.z=0.125`
+  - raw odom 仍接近 origin
+  - AMCL 发生虚假平移，AMCL/odom disagreement 达到约 `1.12 m`
+- v5 current-pose recovery test 写入：
+
+```text
+data/node8_scan_accum_v5_no_rotate_tight_amcl_pure_nav2_from_current_to_purple_boxes_2026-06-23.csv
+```
+
+  - `result=timeout`
+  - final AMCL error `0.618 m`
+  - final raw odom error `2.723 m`
+  - AMCL/odom disagreement `2.608 m`
+  - 结论：Nav2/AMCL 认为接近目标，但物理车体没有到达，因此严格失败。
+- odom-truth baseline 从 clean reset/origin 到 purple boxes 已成功：
+
+```text
+data/node8_odom_truth_baseline_from_origin_to_purple_boxes_2026-06-23.csv
+```
+
+  - result: `success`
+  - target: `(-6.3, 10.8)`
+  - final raw odom: `(-6.082, 10.529)`
+  - final raw odom error: `0.348 m`
+  - final Nav2 feedback distance: `0.365 m`
+  - 结论：controller/costmap/rolling scan 在 `map -> odom` 稳定时可以完成长距离物理导航；主要 blocker 已定位为 AMCL scan localization，而不是 RPP 控制器本身。
+
+- strict active visual bridge 随后在目标区域通过：
+  - instruction: `Go to the purple boxes.`
+  - `nav_result=success`
+  - `navigation_arrived=True`
+  - `visual_confirmed=True`
+  - `task_success=True`
+  - `confidence=0.95`
+  - `parse_method=semantic_explore_final_visual_confirmed`
+  - final image:
+
+```text
+data/runtime/trial_images/trial_0013_20260623_180722_187547852_scan_05_go_to_the_purple_boxes.png
+```
+
+  - result row appended to:
+
+```text
+data/node6_trials.csv
+```
+
+  - 人工检查最终图像：purple boxes 位于画面左侧，部分被黄色货叉/护栏遮挡，但目标可见；该结果满足 `navigation_arrived AND visual_confirmed`。
+
+- Isaac Sim 重启后复现：
+
+```text
+data/node8_reboot_odom_truth_pure_nav2_origin_to_purple_boxes_2026-06-23.csv
+data/node8_reboot_odom_truth_return_to_origin_retry_2026-06-23.csv
+```
+
+  - reboot origin -> purple boxes:
+    - `result=success`
+    - final raw odom `(-6.085, 10.532)`
+    - raw target error `0.343 m`
+    - feedback distance `0.365 m`
+  - reboot strict visual:
+    - `navigation_arrived=True`
+    - `visual_confirmed=True`
+    - `task_success=True`
+    - confidence `0.95`
+    - final image:
+
+```text
+data/runtime/trial_images/trial_0009_20260623_184124_788871813_scan_01_go_to_the_purple_boxes.png
+```
+
+  - return-to-origin retry:
+    - `result=success`
+    - final raw odom `(-0.210, 0.273)`
+    - raw origin error `0.345 m`
+
+- AMCL-owning Nav2 reboot test remains failed:
+
+```text
+data/node8_reboot_amcl_tf_broadcast_pure_nav2_current_to_purple_boxes_2026-06-23.csv
+```
+
+  - `result=timeout`
+  - final raw odom `(-1.002, 7.535)`
+  - final AMCL pose `(-5.186, 7.221)`
+  - raw target error `6.223 m`
+  - AMCL target error `3.748 m`
+  - AMCL/raw disagreement `4.197 m`
+  - conclusion: AMCL scan matching still drifts in the shelf/corridor region.
+
+New AMCL test config:
+
+```text
+config/nav2_params_amcl_test.yaml
+```
+
+  - `amcl.tf_broadcast=true`
+  - no static `map -> odom` should be active for this mode
+  - conservative scan model for next pass:
+    - `laser_likelihood_max_dist: 1.5`
+    - `sigma_hit: 0.30`
+    - `z_hit: 0.35`
+    - `z_rand: 0.55`
+  - QoS note: AMCL subscribes to `/initialpose` with `BEST_EFFORT`; initial-pose publishers must match that QoS or AMCL may ignore the pose.
+
+下一步：
+
+1. 保留 odom-truth baseline 作为仿真中可复现的 Node 8 purple-box targeted 成功链路。
+2. 继续修 AMCL：重点检查 `/scan` 与静态地图对齐、粒子滤波 motion model、`/chassis/odom` 与 Nav2 `/odom` frame 一致性，并验证 `config/nav2_params_amcl_test.yaml` 的 conservative scan model。
+3. 只有 AMCL 版本也能让 raw odom 进入目标半径并通过 final visual scan，才把 Node 8 写成 AMCL-localized 全链路完成。
+4. 后续需要扩展到 full 15-instruction rerun，不能用单条 purple-box targeted case 代表完整 benchmark。
+
+补充来源：
+
+- ROS 2 `pointcloud_to_laserscan` target frame 参考：<https://docs.ros.org/en/ros2_packages/humble/api/pointcloud_to_laserscan/__README.html>
+- Nav2 obstacle layer：<https://docs.nav2.org/configuration/packages/costmap-plugins/obstacle.html>
 
 <a id="zh"></a>
 
@@ -482,3 +667,114 @@ data/node7_safe_navigation_checks_2026-06-13.csv
 
 
 </details>
+
+## 2026-06-23: Node 8 Nav2 long-distance tuning
+
+当前重新聚焦远距离导航：`Go to the purple boxes.` 的目标为 `(-6.3, 10.8)`。2026-06-16 基线在长距离执行中出现 AMCL/raw odom 不一致，最终未到达目标区域。
+
+已做改动：
+
+* `config/nav2_params_custom.yaml`：将 `FollowPath` 从 DWB 切换到 Nav2 Regulated Pure Pursuit。
+* RPP v2：关闭 `use_rotate_to_heading`，避免 Carter 在起点附近只收到低角速度、长时间不平移。
+* AMCL v2：提高 scan 更新频率和粒子覆盖，关闭 beam skipping，并将 RPP 线速度降到 `0.18 m/s`。
+* `src/vln_nav2_bridge/vln_nav2_bridge/vln_node_local.py`：bridge 侧 stuck 检测优先使用 AMCL-to-goal 欧氏距离，避免瞬时 `distance_remaining=0.00 m` 或路径长度反馈波动污染进度判断。
+* Active visual confirmation：采用 “initial scan + semantic Nav2 + during-nav low-frequency visual check + final scan + bounded active search”。
+* 严格成功标准保持为：
+
+```text
+task_success = navigation_arrived AND visual_confirmed
+```
+
+其中 `target_seen_during_nav=True` 只表示途中看见过目标，不能单独算成功；最终必须 `final_visual_confirmed=True`。
+
+当前在线结果：
+
+| Run | CSV | 结果 | 关键问题 |
+|---|---|---|---|
+| RPP v1 | `data/node8_rpp_purple_boxes_health_2026-06-23.csv` | `stuck` | 起点附近几乎不平移 |
+| RPP v2 | `data/node8_rpp_v2_purple_boxes_health_2026-06-23.csv` | bridge success, physical arrival false | AMCL/raw odom 差异 `9.094 m`，假到达 |
+| RPP v2 + AMCL v1 | `data/node8_rpp_amcl_v1_purple_boxes_health_2026-06-23.csv` | `stuck` | 中途 AMCL/raw odom 差异 `5.604 m`，未到达 |
+| RPP v2 + AMCL v2 + active visual | `data/node8_rpp_amcl_v2_active_visual_purple_boxes_health_2026-06-23.csv` | `timeout`, strict task success false | 途中视觉看到目标，但 AMCL/raw odom 差异 `7.303 m`，未物理到达 |
+| Pure Nav2 from current pose | `data/node8_pure_nav2_from_current_to_purple_boxes_2026-06-23.csv` | `timeout` | 无 VLM/bridge 时仍失败；AMCL error `3.133 m`，raw odom error `4.531 m` |
+| Pure Nav2 + `/chassis/odom` topic fix | `data/node8_odom_topic_v1_pure_nav2_from_current_to_purple_boxes_2026-06-23.csv` | `timeout` | 有改善但仍未到达；AMCL error `1.109 m`，raw odom error `2.028 m` |
+| Pure Nav2 + rolling scan accumulator | `data/node8_scan_accum_v1_pure_nav2_from_current_to_purple_boxes_2026-06-23.csv` | `success` | 从近目标当前位姿成功进入物理半径；AMCL error `0.332 m`，raw odom error `0.543 m` |
+
+Active visual result:
+
+```text
+target_seen_during_nav=True
+final_visual_confirmed=False
+task_success=False
+```
+
+途中视觉证据图：
+
+```text
+data/runtime/trial_images/trial_0009_20260623_143220_668958412_during_nav_go_to_the_purple_boxes.png
+```
+
+结论：active visual pipeline 已经证明远距离途中可以看到 purple boxes；当前 blocker 重新收敛到 AMCL/odom/frame consistency，而不是 VLM 识别本身。
+
+七步 Nav2 diagnosis 当前进度：
+
+1. `/odom` vs `/chassis/odom` 已完成：Isaac 实际发布 `/chassis/odom`，消息里仍是 `frame_id=odom`、`child_frame_id=base_link`。
+2. TF tree 已完成：保留 `odom -> base_link`，并继续使用静态 `base_link -> base_footprint`。
+3. `/scan` / map preflight 已完成：当前 pose 和 purple-box 目标在静态地图 free cell；`/scan` 非空，但有限 beam 比例低，当前记录约 `0.172`。
+4. Pure Nav2 long-goal test 已完成：无视觉桥也会 timeout，因此不能把失败归因给 VLM。
+5. AMCL / scan / odom / TF tuning 进行中：已把 Nav2 中残留的 `/odom` topic 配置统一到 Isaac 的 `/chassis/odom`；这改善了局部一致性，但没有完成物理到达。
+6. Return to active visual bridge 暂缓：必须先让纯 Nav2 至少稳定进入物理目标半径，再恢复 strict visual test。
+7. README/log/source updates 已同步到 `logs/week(2026-06-22-2026-06-28).md`。
+
+当前第 5 步结论：`/chassis/odom` topic 修正不是最终解。下一轮应重点检查 pointcloud-to-laserscan 的高度切片、有限 beam 比例、scan-to-map 对齐和 AMCL measurement model，因为最后仍出现 `last_feedback_distance_m=1.112`、`amcl_error_m=1.109`，但 `raw_odom_error_m=2.028`。
+
+第 5 步最新更新：单帧 `pointcloud_to_laserscan` 是当前最大嫌疑点。Isaac 的 `/front_3d_lidar/lidar_points` 每帧是稀疏/分片点云，直接投成 360-degree `/scan` 时 finite ratio 只有约 `0.17`。新增 `node8_scan_accumulator` 后，rolling 1 秒累积 scan 的 finite ratio 提升到约 `0.93`，并让当前近目标 pure Nav2 run 成功进入物理半径。
+
+新增启动方式：
+
+```text
+source /opt/ros/humble/setup.bash
+source install/setup.bash
+ros2 run vln_nav2_bridge node8_scan_accumulator --ros-args \
+  -p use_sim_time:=true \
+  -p accumulation_time_sec:=1.0 \
+  -p min_height:=-0.5 \
+  -p max_height:=0.2
+```
+
+也保留了 direct baseline launch：
+
+```text
+ros2 launch vln_nav2_bridge pointcloud_to_scan_bridge.launch.py
+```
+
+注意：rolling scan accumulator 目前只证明“近目标局部段”可达；还没有证明从 origin 到 purple boxes 的完整长距离任务可达。下一轮必须 reset Isaac/Carter 到 origin 后，先跑 full pure Nav2，再跑 active visual bridge。
+
+最新代码已通过：
+
+```text
+/usr/bin/python3 -m py_compile src/vln_nav2_bridge/vln_nav2_bridge/vln_node_local.py
+/usr/bin/python3 YAML parse check for config/nav2_params_custom.yaml
+```
+
+下一次需要从 Isaac Sim/Carter 原点 reset 后，重启 Nav2 与 bridge，再运行：
+
+```text
+data/node8_rpp_amcl_v2_purple_boxes_health_2026-06-23.csv
+data/node8_rpp_amcl_v2_active_visual_purple_boxes_health_2026-06-23.csv
+```
+
+来源：
+
+* Nav2 Regulated Pure Pursuit: https://docs.nav2.org/configuration/packages/configuring-regulated-pp.html
+* Nav2 AMCL: https://docs.nav2.org/configuration/packages/configuring-amcl.html
+* Nav2 Simple Commander: https://docs.nav2.org/commander_api/index.html
+* Nav2 SimpleProgressChecker: https://docs.nav2.org/configuration/packages/nav2_controller-plugins/simple_progress_checker.html
+* Nav2 BT Navigator odom topic: https://docs.nav2.org/configuration/packages/configuring-bt-navigator.html
+* Nav2 Velocity Smoother odom topic / feedback mode: https://docs.nav2.org/configuration/packages/configuring-velocity-smoother.html
+* ROS 2 `pointcloud_to_laserscan`: https://docs.ros.org/en/ros2_packages/humble/api/pointcloud_to_laserscan/__README.html
+* Nav2 sensor setup / LaserScan and PointCloud2 costmap usage: https://docs.nav2.org/setup_guides/sensors/mapping_localization.html
+* Nav2 Obstacle Layer observation sources: https://docs.nav2.org/configuration/packages/costmap-plugins/obstacle.html
+* Regulated Pure Pursuit paper: https://arxiv.org/abs/2305.20026
+* VLFM, language-grounded frontier/value maps with online visual evidence updates: https://arxiv.org/abs/2312.03275
+* VL-Nav, RGB/odometry/LiDAR/open-vocabulary detection with online map and target candidates: https://arxiv.org/abs/2502.00931
+* 3D-Aware ObjectNav, simultaneous exploration and identification: https://openaccess.thecvf.com/content/CVPR2023/papers/Zhang_3D-Aware_Object_Goal_Navigation_via_Simultaneous_Exploration_and_Identification_CVPR_2023_paper.pdf

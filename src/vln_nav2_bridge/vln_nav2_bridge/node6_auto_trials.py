@@ -346,6 +346,10 @@ class Node6AutoTrials(Node):
             "within_success_radius",
             "navigation_arrived",
             "visual_confirmed",
+            "target_seen_during_nav",
+            "target_seen_during_nav_image",
+            "final_visual_confirmed",
+            "active_search_used",
             "task_success",
             "nav_result",
             "failure_reason",
@@ -410,8 +414,11 @@ class Node6AutoTrials(Node):
         if parse_method in (
             "visual_semantic_map",
             "semantic_explore_then_visual_semantic_map",
+            "semantic_explore_final_visual_confirmed",
             "semantic_explore_relaxed_confirm",
         ):
+            return True
+        if Node6AutoTrials._as_bool(result.get("final_visual_confirmed"), default=False):
             return True
         return Node6AutoTrials._as_bool(result.get("visible"), default=False)
 

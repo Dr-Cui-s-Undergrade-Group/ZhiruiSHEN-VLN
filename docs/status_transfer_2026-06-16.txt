@@ -1,0 +1,271 @@
+VLN / Isaac Sim / Nav2 current status transfer
+Date: 2026-06-16
+Project: /home/bluepoisons/Desktop/FURP/VLN/ZhiruiSHEN-VLN
+
+1. Current progress
+
+- Node 6 has been completed.
+- Node 7 has been implemented and evaluated with online Isaac Sim + ROS 2 Humble + Nav2 + local Qwen VLM.
+- Latest pushed commit:
+  c34431b Record Node 7 evaluation and navigation fixes
+- Remote:
+  git@github.com:Dr-Cui-s-Undergrade-Group/ZhiruiSHEN-VLN.git
+
+Important evaluation result:
+
+- Full clean online Node 7 evaluation on 2026-06-16:
+  data/node7_observation_pose_full_clean_2026-06-16.csv
+- Strict task success: 5 / 15
+- Physical arrival: 6 / 15
+- Visual confirmed: 6 / 15
+
+Do not report the targeted 5 / 6 result as the full Node 7 result.
+The 5 / 6 result was only a targeted plant/chair observation-pose test from 2026-06-15.
+
+2. What can be said in the meeting
+
+Chinese version:
+
+目前已经初步完成了小车在 Isaac Sim 中的 VLN 运行流程，包括视觉语言模型识别、目标映射、Nav2 导航和自动化评估。短距离或部分目标任务可以成功完成，但长距离任务的成功率还不高。根据目前的实验现象，主要问题不像是 VLM 量化导致的语义识别失败，而更可能集中在 Nav2 调参、AMCL/odom 位姿漂移、局部代价地图和控制器行为上。下一步会优先围绕 Nav2 参数进行系统调优，尤其是 controller、AMCL、costmap、inflation 和 progress checker。
+
+English version:
+
+The basic VLN pipeline in Isaac Sim is now working: VLM-based object recognition, target mapping, Nav2 navigation, and automated evaluation are connected. Short-range or selected target tasks can succeed, but long-horizon navigation still has a low success rate. Current evidence suggests that the main bottleneck is probably not VLM quantization, but Nav2 tuning, AMCL/odom pose drift, local costmap behavior, and controller settings. The next step is systematic Nav2 tuning, especially controller, AMCL, costmap, inflation, and progress checker parameters.
+
+3. Current diagnosis
+
+The current navigation error is more likely an algorithm / navigation-stack issue than a model quantization issue.
+
+Evidence:
+
+- VLM can often identify target objects correctly.
+- Observation poses improve selected targets, which means semantic target selection is not the only bottleneck.
+- Long-distance trials show large pose disagreement between AMCL and raw odom.
+- Latest targeted health test failed before Trial 2 because pose disagreement exceeded the safety threshold.
+
+Latest targeted health test:
+
+- File:
+  data/node7_targeted_health_2026-06-16.csv
+- Instruction:
+  Go to the purple boxes.
+- Target:
+  (-6.3, 10.8)
+- Result:
+  stuck
+- Final error:
+  7.973 m
+- AMCL:
+  (-3.105, 3.495)
+- Raw odom:
+  (-1.226, 5.745)
+- Pose disagreement:
+  2.932 m
+- Runner behavior:
+  Aborted because --max-pose-disagreement-m 1.0 and --abort-on-pose-disagreement were enabled.
+
+This supports the conclusion that long-distance failure is related to localization / Nav2 behavior.
+
+4. Current GPU situation
+
+- User reported about 7 GB VRAM still free.
+- Because there is still spare VRAM, the problem is not likely caused simply by running out of GPU memory.
+- Quantization may still affect fine visual recognition, but current failure evidence points more strongly to navigation tuning.
+
+5. Existing fixes and changes
+
+Observation poses added:
+
+- plant:
+  (0.35, -2.92, pi)
+- chair:
+  (0.20, -0.69, pi)
+- shelf / package / rack:
+  (-6.30, 10.80, pi)
+
+Pose-health tracking added in node6_auto_trials.py:
+
+- CSV fields:
+  amcl_x
+  amcl_y
+  odom_x
+  odom_y
+  pose_disagreement_m
+  pose_health_ok
+- CLI flags:
+  --max-pose-disagreement-m
+  --abort-on-pose-disagreement
+
+Bridge coordinate fix:
+
+- vln_node_local.py now subscribes to /amcl_pose.
+- Nav2 safe-start and dynamic timeout use AMCL / map pose.
+- Raw /chassis/odom is kept as diagnostic data only.
+
+Nav2 params copied into repo:
+
+- config/nav2_params_custom.yaml
+- local costmap was enlarged from 3 x 3 to 5 x 5.
+- progress checker movement allowance changed from 10 s to 20 s.
+
+Uncommitted latest bridge fix:
+
+- vln_node_local.py ignores inconsistent initial Nav2 feedback where distance_remaining = 0.00 while AMCL-to-goal is still large.
+
+6. Current git workspace state
+
+As of this note, the workspace has uncommitted files:
+
+- modified:
+  data/node6_trials.csv
+- modified:
+  src/vln_nav2_bridge/vln_nav2_bridge/vln_node_local.py
+- untracked:
+  data/node7_targeted_health_2026-06-16.csv
+
+Suggested commit decision:
+
+- Commit vln_node_local.py if preserving the feedback-zero Nav2 bug fix.
+- Commit data/node7_targeted_health_2026-06-16.csv if preserving evidence of the long-distance pose-drift failure.
+- Do not commit data/node6_trials.csv unless this runtime log is intentionally needed.
+
+7. Recommended Nav2 tuning plan
+
+Priority 1: switch controller from DWB to Regulated Pure Pursuit.
+
+Reason:
+
+- Carter-style differential-drive robots in simulated warehouse-like environments often work better with a stable path-tracking controller.
+- RPP is commonly used in Nav2 for smoother path following and obstacle-aware speed regulation.
+
+Target file:
+
+- config/nav2_params_custom.yaml
+
+Recommended direction:
+
+- Use:
+  nav2_regulated_pure_pursuit_controller::RegulatedPurePursuitController
+- Keep local costmap at least 5 x 5.
+- Tune lookahead distance and speed conservatively.
+- Avoid overly aggressive stuck detection during long runs.
+
+Priority 2: tune AMCL.
+
+Recommended direction:
+
+- Increase particles if localization is unstable.
+- Check initial pose is set correctly before each run.
+- Monitor AMCL pose against /chassis/odom during long tasks.
+- Abort or reset when AMCL/odom disagreement grows too large.
+
+Priority 3: tune costmaps and inflation.
+
+Recommended direction:
+
+- Verify robot_radius or footprint matches Carter robot size.
+- Use smoother inflation instead of hard narrow obstacle margins.
+- Ensure local costmap is large enough for long-distance recovery behavior.
+
+Priority 4: run targeted health tests before full evaluation.
+
+Recommended sequence:
+
+1. Reset robot to origin in Isaac Sim.
+2. Verify /chassis/odom is near (0, 0).
+3. Start /scan bridge.
+4. Start static TF base_link -> base_footprint.
+5. Start Nav2 with config/nav2_params_custom.yaml.
+6. Set AMCL initial pose.
+7. Start vln_nav2_bridge.
+8. Run targeted health test.
+9. Only run full 15-trial evaluation if targeted health is stable.
+
+8. Useful commands
+
+Build:
+
+cd /home/bluepoisons/Desktop/FURP/VLN/ZhiruiSHEN-VLN
+source /opt/ros/humble/setup.bash
+colcon build --packages-select vln_nav2_bridge
+source install/setup.bash
+
+Start /scan:
+
+source /opt/ros/humble/setup.bash
+ros2 run pointcloud_to_laserscan pointcloud_to_laserscan_node --ros-args \
+  -p use_sim_time:=true -p target_frame:=base_link -p transform_tolerance:=0.2 \
+  -p min_height:=-0.2 -p max_height:=0.5 \
+  -p angle_min:=-3.14159 -p angle_max:=3.14159 -p angle_increment:=0.0087 \
+  -p scan_time:=0.2 -p range_min:=0.1 -p range_max:=30.0 \
+  -r cloud_in:=/front_3d_lidar/lidar_points -r scan:=/scan
+
+Start static TF:
+
+source /opt/ros/humble/setup.bash
+ros2 run tf2_ros static_transform_publisher 0 0 0 0 0 0 base_link base_footprint --ros-args -p use_sim_time:=true
+
+Start Nav2:
+
+source /opt/ros/humble/setup.bash
+ros2 launch nav2_bringup bringup_launch.py use_sim_time:=True \
+  map:=/home/bluepoisons/Desktop/FURP/VLN/ZhiruiSHEN-VLN/data/warehouse_map.yaml \
+  params_file:=/home/bluepoisons/Desktop/FURP/VLN/ZhiruiSHEN-VLN/config/nav2_params_custom.yaml \
+  autostart:=true
+
+Set initial pose:
+
+source /opt/ros/humble/setup.bash
+ros2 service call /set_initial_pose nav2_msgs/srv/SetInitialPose "{pose: {header: {frame_id: 'map'}, pose: {pose: {position: {x: 0.0, y: 0.0, z: 0.0}, orientation: {x: 0.0, y: 0.0, z: 0.0, w: 1.0}}, covariance: [0.25, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.25, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0685]}}}"
+
+Start bridge:
+
+source /opt/ros/humble/setup.bash
+source install/setup.bash
+ros2 launch vln_nav2_bridge vln_nav2_bridge_local.launch.py \
+  image_topic:=/front_stereo_camera/left/image_raw require_fresh_image:=true \
+  nav_timeout_sec:=900.0 inference_mode:=server \
+  visual_scan_enabled:=true semantic_exploration_enabled:=true
+
+Run targeted health test:
+
+source /opt/ros/humble/setup.bash
+source install/setup.bash
+ros2 run vln_nav2_bridge node6_auto_trials -- \
+  --instructions-file data/runtime/node7_targeted_health_2026-06-16.txt \
+  --output data/node7_targeted_health_2026-06-16.csv \
+  --timeout-sec 900.0 --settle-sec 2.0 \
+  --max-pose-disagreement-m 1.0 --abort-on-pose-disagreement
+
+9. References to check later
+
+Official Nav2 tuning guide:
+
+- https://docs.nav2.org/tuning/index.html
+
+Official Nav2 controller server config:
+
+- https://docs.nav2.org/configuration/packages/configuring-controller-server.html
+
+Official Nav2 AMCL config:
+
+- https://docs.nav2.org/configuration/packages/configuring-amcl.html
+
+Official Nav2 Regulated Pure Pursuit config:
+
+- https://docs.nav2.org/configuration/packages/configuring-regulated-pp.html
+
+Possible related Nav2 developer tuning video:
+
+- https://www.youtube.com/watch?v=jkoGkAd0GYk
+
+10. Next concrete action
+
+Implement and test Nav2 tuning first:
+
+- Update config/nav2_params_custom.yaml to use Regulated Pure Pursuit.
+- Build vln_nav2_bridge.
+- Reset Isaac Sim robot to origin.
+- Start Nav2 stack with the custom params.
+- Run targeted long-distance health test first.
+- If pose disagreement stays low and targeted routes improve, then run the full 15-trial clean evaluation again.

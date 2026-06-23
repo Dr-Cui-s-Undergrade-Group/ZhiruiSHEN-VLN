@@ -1,0 +1,11 @@
+trial_id,timestamp,duration_sec,instruction,image_path,model_output,model_target,visible,confidence,parse_method,target_x,target_y,target_yaw,amcl_x,amcl_y,odom_x,odom_y,pose_disagreement_m,pose_health_ok,final_pose_source,final_x,final_y,final_yaw,final_error_m,within_success_radius,navigation_arrived,visual_confirmed,task_success,nav_result,failure_reason
+
+1,2026-06-23 12:58:29,832.261,Go to the purple boxes.,/home/bluepoisons/Desktop/FURP/VLN/ZhiruiSHEN-VLN/data/runtime/trial_images/trial_0016_20260623_125823_188777633_scan_08_go_to_the_purple_boxes.png,"```json
+{
+  ""target"": ""purple boxes"",
+  ""visible"": false,
+  ""confidence"": 0.0,
+  ""horizontal_position"": ""unknown"",
+  ""evidence"": ""The image shows a warehouse interior with white brick walls, a yellow upper section, and a gray floor. There are no purple boxes visible in the image.""
+}
+```",purple boxes,False,0.0,semantic_explore_relaxed_confirm,-6.3,10.8,3.141592653589793,-6.317,9.095,2.614,10.812,9.094,False,amcl_pose,-6.317,9.095,1.675,1.705,False,True,True,True,success,

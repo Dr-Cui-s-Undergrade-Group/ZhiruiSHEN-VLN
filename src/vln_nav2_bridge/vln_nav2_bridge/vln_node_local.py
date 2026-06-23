@@ -103,8 +103,18 @@ class VLNBridgeNodeLocal(Node):
         self.declare_parameter("visual_scan_spin_time_allowance_sec", 15.0)
         self.declare_parameter("visual_scan_spin_mode", "cmd_vel")
         self.declare_parameter("visual_scan_angular_speed_rad_s", 0.35)
+        self.declare_parameter("visual_check_during_nav_enabled", True)
+        self.declare_parameter("visual_check_interval_sec", 5.0)
+        self.declare_parameter("visual_check_min_travel_m", 0.75)
+        self.declare_parameter("final_visual_scan_required", True)
+        self.declare_parameter("active_search_enabled", True)
+        self.declare_parameter("active_search_forward_distance_m", 0.35)
+        self.declare_parameter("active_search_linear_speed_m_s", 0.10)
+        self.declare_parameter("active_search_max_moves", 2)
         self.declare_parameter("cmd_vel_topic", "/cmd_vel")
         self.declare_parameter("semantic_exploration_enabled", True)
+        self.declare_parameter("semantic_nav_first_enabled", True)
+        self.declare_parameter("semantic_nav_first_min_distance_m", 2.0)
         self.declare_parameter("clear_costmaps_before_nav", True)
         self.declare_parameter("nav_retry_on_stuck", True)
         self.declare_parameter("nav_max_retries", 1)
@@ -196,9 +206,39 @@ class VLNBridgeNodeLocal(Node):
         self.visual_scan_angular_speed_rad_s = float(
             self.get_parameter("visual_scan_angular_speed_rad_s").value
         )
+        self.visual_check_during_nav_enabled = self._as_bool(
+            self.get_parameter("visual_check_during_nav_enabled").value
+        )
+        self.visual_check_interval_sec = float(
+            self.get_parameter("visual_check_interval_sec").value
+        )
+        self.visual_check_min_travel_m = float(
+            self.get_parameter("visual_check_min_travel_m").value
+        )
+        self.final_visual_scan_required = self._as_bool(
+            self.get_parameter("final_visual_scan_required").value
+        )
+        self.active_search_enabled = self._as_bool(
+            self.get_parameter("active_search_enabled").value
+        )
+        self.active_search_forward_distance_m = float(
+            self.get_parameter("active_search_forward_distance_m").value
+        )
+        self.active_search_linear_speed_m_s = float(
+            self.get_parameter("active_search_linear_speed_m_s").value
+        )
+        self.active_search_max_moves = max(
+            0, int(self.get_parameter("active_search_max_moves").value)
+        )
         self.cmd_vel_topic = self.get_parameter("cmd_vel_topic").value
         self.semantic_exploration_enabled = self._as_bool(
             self.get_parameter("semantic_exploration_enabled").value
+        )
+        self.semantic_nav_first_enabled = self._as_bool(
+            self.get_parameter("semantic_nav_first_enabled").value
+        )
+        self.semantic_nav_first_min_distance_m = float(
+            self.get_parameter("semantic_nav_first_min_distance_m").value
         )
         self.clear_costmaps_before_nav = self._as_bool(
             self.get_parameter("clear_costmaps_before_nav").value
@@ -302,6 +342,11 @@ class VLNBridgeNodeLocal(Node):
         self.image_save_lock = threading.Lock()
         self.nav2_initialized = False
         self._safe_start_recovery_active = False
+        self._active_instruction = ""
+        self._target_seen_during_nav = False
+        self._target_seen_during_nav_path = ""
+        self._target_seen_during_nav_output = ""
+        self._target_seen_during_nav_json = None
         self.instruction_callback_group = MutuallyExclusiveCallbackGroup()
         self.image_callback_group = ReentrantCallbackGroup()
         self._ensure_live_image_dirs()
@@ -395,7 +440,11 @@ class VLNBridgeNodeLocal(Node):
                 f"visual_scan_enabled={self.visual_scan_enabled}, "
                 f"visual_scan_steps={self.visual_scan_steps}, "
                 f"visual_scan_spin_mode={self.visual_scan_spin_mode}, "
+                f"visual_check_during_nav_enabled={self.visual_check_during_nav_enabled}, "
+                f"final_visual_scan_required={self.final_visual_scan_required}, "
+                f"active_search_enabled={self.active_search_enabled}, "
                 f"semantic_exploration_enabled={self.semantic_exploration_enabled}, "
+                f"semantic_nav_first_enabled={self.semantic_nav_first_enabled}, "
                 f"pose_topic={self.pose_topic}, "
                 f"odom_topic={self.odom_topic}, "
                 f"nav_retry_on_stuck={self.nav_retry_on_stuck}, "
@@ -419,6 +468,7 @@ class VLNBridgeNodeLocal(Node):
             return
 
         self.get_logger().info(f"Received instruction: {instruction}")
+        self._reset_active_visual_state(instruction)
 
         image_path = ""
         model_output = ""
@@ -452,6 +502,69 @@ class VLNBridgeNodeLocal(Node):
                 navigation_arrived=False,
                 visual_confirmed=False,
                 task_success=False,
+            )
+            self._publish_and_log_result(result_payload)
+            return
+
+        semantic_first_result = self._try_semantic_nav_first(instruction=instruction)
+        if semantic_first_result.get("attempted"):
+            x = float(semantic_first_result.get("x", 0.0))
+            y = float(semantic_first_result.get("y", 0.0))
+            yaw = float(semantic_first_result.get("yaw", 0.0))
+            nav_result = str(semantic_first_result.get("nav_result", "failed"))
+            failure_reason = str(semantic_first_result.get("reason", ""))
+
+            if nav_result not in ("success", "dry_run"):
+                result_payload = self._build_trial_result(
+                    instruction=instruction,
+                    image_path=image_path,
+                    model_output=model_output,
+                    model_json=None,
+                    parse_method="semantic_nav_first_failed",
+                    x=x,
+                    y=y,
+                    yaw=yaw,
+                    nav_result=nav_result,
+                    failure_reason=failure_reason,
+                    started_at=started_at,
+                    navigation_arrived=False,
+                    visual_confirmed=False,
+                    task_success=False,
+                )
+                self._publish_and_log_result(result_payload)
+                return
+
+            final_result = self._confirm_target_after_arrival(instruction=instruction)
+            image_path = str(final_result.get("image_path", image_path))
+            model_output = str(final_result.get("model_output", model_output))
+            model_json = final_result.get("model_json")
+            active_search_used = bool(final_result.get("active_search_used", False))
+            final_visual_confirmed = bool(final_result.get("ok", False))
+            method = "semantic_nav_first_final_visual_confirmed"
+            if not final_visual_confirmed:
+                method = "semantic_nav_first_final_visual_failed"
+                failure_reason = str(
+                    final_result.get("reason", "final visual confirmation failed")
+                )
+
+            result_payload = self._build_trial_result(
+                instruction=instruction,
+                image_path=image_path,
+                model_output=model_output,
+                model_json=model_json if isinstance(model_json, dict) else None,
+                parse_method=method,
+                x=x,
+                y=y,
+                yaw=yaw,
+                nav_result="success",
+                failure_reason=failure_reason,
+                started_at=started_at,
+                navigation_arrived=True,
+                visual_confirmed=final_visual_confirmed,
+                task_success=final_visual_confirmed,
+                target_seen_during_nav=self._target_seen_during_nav,
+                final_visual_confirmed=final_visual_confirmed,
+                active_search_used=active_search_used,
             )
             self._publish_and_log_result(result_payload)
             return
@@ -494,11 +607,35 @@ class VLNBridgeNodeLocal(Node):
                         return
 
                     semantic_explored = True
-                    scan_result = self._visual_scan_for_target(instruction=instruction)
+                    scan_result = self._confirm_target_after_arrival(instruction=instruction)
                     image_path = str(scan_result.get("image_path", image_path))
                     model_output = str(scan_result.get("model_output", model_output))
                     model_json = scan_result.get("model_json", model_json)
                     method = str(scan_result.get("method", "visual_scan"))
+                    active_search_used = bool(scan_result.get("active_search_used", False))
+
+                    if scan_result.get("ok"):
+                        result_payload = self._build_trial_result(
+                            instruction=instruction,
+                            image_path=image_path,
+                            model_output=model_output,
+                            model_json=model_json if isinstance(model_json, dict) else None,
+                            parse_method="semantic_explore_final_visual_confirmed",
+                            x=x,
+                            y=y,
+                            yaw=yaw,
+                            nav_result="success",
+                            failure_reason="",
+                            started_at=started_at,
+                            navigation_arrived=True,
+                            visual_confirmed=True,
+                            task_success=True,
+                            target_seen_during_nav=self._target_seen_during_nav,
+                            final_visual_confirmed=True,
+                            active_search_used=active_search_used,
+                        )
+                        self._publish_and_log_result(result_payload)
+                        return
 
                     if not scan_result.get("ok"):
                         relaxed_confirmed = self._relaxed_semantic_confirmation(
@@ -522,6 +659,9 @@ class VLNBridgeNodeLocal(Node):
                                 navigation_arrived=True,
                                 visual_confirmed=True,
                                 task_success=True,
+                                target_seen_during_nav=self._target_seen_during_nav,
+                                final_visual_confirmed=True,
+                                active_search_used=active_search_used,
                             )
                             self._publish_and_log_result(result_payload)
                             return
@@ -545,6 +685,9 @@ class VLNBridgeNodeLocal(Node):
                             navigation_arrived=True,
                             visual_confirmed=False,
                             task_success=False,
+                            target_seen_during_nav=self._target_seen_during_nav,
+                            final_visual_confirmed=False,
+                            active_search_used=active_search_used,
                         )
                         self._publish_and_log_result(result_payload)
                         return
@@ -678,6 +821,28 @@ class VLNBridgeNodeLocal(Node):
         self.get_logger().info("Published pose to /vln_goal_pose")
 
         nav_result, failure_reason = self._navigate_to_pose(pose)
+        navigation_arrived = nav_result in ("success", "dry_run")
+        final_visual_confirmed = False
+        active_search_used = False
+        if navigation_arrived and self.final_visual_scan_required:
+            final_result = self._confirm_target_after_arrival(instruction=instruction)
+            image_path = str(final_result.get("image_path", image_path))
+            model_output = str(final_result.get("model_output", model_output))
+            model_json = final_result.get("model_json", model_json)
+            final_visual_confirmed = bool(final_result.get("ok", False))
+            active_search_used = bool(final_result.get("active_search_used", False))
+            if final_visual_confirmed:
+                method = f"{method}_final_visual_confirmed"
+            else:
+                method = f"{method}_final_visual_failed"
+                failure_reason = str(
+                    final_result.get("reason", "final visual confirmation failed")
+                )
+        elif navigation_arrived:
+            final_visual_confirmed = self._model_reports_visible_target(
+                model_json=model_json if isinstance(model_json, dict) else None,
+                instruction=instruction,
+            )
 
         result_payload = self._build_trial_result(
             instruction=instruction,
@@ -691,6 +856,11 @@ class VLNBridgeNodeLocal(Node):
             nav_result=nav_result,
             failure_reason=failure_reason,
             started_at=started_at,
+            navigation_arrived=navigation_arrived,
+            visual_confirmed=(navigation_arrived and final_visual_confirmed),
+            target_seen_during_nav=self._target_seen_during_nav,
+            final_visual_confirmed=final_visual_confirmed,
+            active_search_used=active_search_used,
         )
         self._publish_and_log_result(result_payload)
 
@@ -749,6 +919,71 @@ class VLNBridgeNodeLocal(Node):
             "reason": failure_reason,
         }
 
+    def _try_semantic_nav_first(self, instruction: str) -> dict:
+        """For far known targets, navigate to the semantic pose before visual scanning."""
+        if not self.semantic_nav_first_enabled or not self.semantic_exploration_enabled:
+            return {"attempted": False}
+        if not self.final_visual_scan_required:
+            return {"attempted": False, "reason": "final visual scan is not required"}
+
+        parsed = self.converter.resolve_named_target(
+            instruction=instruction,
+            model_target="",
+        )
+        if not parsed.get("ok"):
+            return {
+                "attempted": False,
+                "reason": parsed.get("reason", "No semantic candidate matched."),
+            }
+
+        x = float(parsed["x"])
+        y = float(parsed["y"])
+        yaw = float(parsed["yaw"])
+        x, y, yaw = self._safe_goal_candidate(x=x, y=y, yaw=yaw)
+        pose = self._build_pose(x=x, y=y, yaw=yaw)
+
+        distance = self._distance_from_latest_odom(pose)
+        if distance is None:
+            distance = self._distance_from_latest_map_pose(pose)
+        if distance is not None and distance < self.semantic_nav_first_min_distance_m:
+            return {
+                "attempted": False,
+                "reason": (
+                    f"semantic target is near ({distance:.2f}m); use normal visual scan"
+                ),
+            }
+
+        # For long-range VLN/ObjectNav, VLFM/VL-Nav style pipelines keep moving
+        # toward map/semantic candidates while collecting visual evidence online,
+        # then gate success on final visual confirmation at the candidate.
+        # Sources:
+        # - https://arxiv.org/abs/2312.03275
+        # - https://arxiv.org/abs/2502.00931
+        target = str(parsed.get("target", "semantic_candidate"))
+        distance_text = "unknown" if distance is None else f"{distance:.2f}m"
+        self.get_logger().info(
+            "Semantic-nav-first selected for far target "
+            f"{target!r}: distance={distance_text}, "
+            f"x={x:.2f}, y={y:.2f}, yaw={yaw:.2f}. "
+            "Skipping initial visual scan; final visual confirmation remains required."
+        )
+
+        if self.goal_pub is not None:
+            self.goal_pub.publish(pose)
+            self.get_logger().info("Published semantic-nav-first pose to /vln_goal_pose")
+
+        nav_result, failure_reason = self._navigate_to_pose(pose)
+        return {
+            "attempted": True,
+            "ok": nav_result in ("success", "dry_run"),
+            "x": x,
+            "y": y,
+            "yaw": yaw,
+            "target": target,
+            "nav_result": nav_result,
+            "reason": failure_reason,
+        }
+
     def _relaxed_semantic_confirmation(
         self,
         instruction: str,
@@ -758,6 +993,11 @@ class VLNBridgeNodeLocal(Node):
         """Accept same-cluster visual evidence after arriving at a semantic candidate."""
         model_json = scan_result.get("model_json")
         if not isinstance(model_json, dict):
+            return False
+        if not self._model_reports_visible_target(
+            model_json=model_json,
+            instruction=instruction,
+        ):
             return False
 
         target = str(model_json.get("target", ""))
@@ -779,6 +1019,154 @@ class VLNBridgeNodeLocal(Node):
             f"instruction_cluster={instruction_cluster}, "
             f"semantic_target={semantic_target!r}, visual_target={target!r}."
         )
+        return True
+
+    def _reset_active_visual_state(self, instruction: str) -> None:
+        self._active_instruction = instruction
+        self._target_seen_during_nav = False
+        self._target_seen_during_nav_path = ""
+        self._target_seen_during_nav_output = ""
+        self._target_seen_during_nav_json = None
+
+    def _maybe_visual_check_during_nav(
+        self,
+        now: float,
+        last_check_at: float,
+        last_check_x: Optional[float],
+        last_check_y: Optional[float],
+    ) -> bool:
+        if not self.visual_check_during_nav_enabled:
+            return False
+        if self._target_seen_during_nav:
+            return False
+        if not self._active_instruction:
+            return False
+        if not (self.image_topic or self.compressed_image_topic):
+            return False
+        if now - last_check_at < self.visual_check_interval_sec:
+            return False
+
+        moved_enough = True
+        if (
+            last_check_x is not None
+            and last_check_y is not None
+            and self.latest_map_x is not None
+            and self.latest_map_y is not None
+        ):
+            moved = math.hypot(
+                float(self.latest_map_x) - float(last_check_x),
+                float(self.latest_map_y) - float(last_check_y),
+            )
+            moved_enough = moved >= self.visual_check_min_travel_m
+        if not moved_enough:
+            return False
+
+        # Active perception note, 2026-06-23:
+        # VLFM/VL-Nav style systems update language-grounded visual evidence
+        # while moving, but a transient detection is not task success. The
+        # final gate remains navigation_arrived AND final visual confirmation.
+        # Sources:
+        # - https://arxiv.org/abs/2312.03275
+        # - https://arxiv.org/abs/2502.00931
+        check_result = self._single_visual_check(
+            instruction=self._active_instruction,
+            label="during_nav",
+        )
+        if check_result.get("ok"):
+            self._target_seen_during_nav = True
+            self._target_seen_during_nav_path = str(check_result.get("image_path", ""))
+            self._target_seen_during_nav_output = str(check_result.get("model_output", ""))
+            self._target_seen_during_nav_json = check_result.get("model_json")
+            self.get_logger().info(
+                "Target seen during navigation; keeping Nav2 goal active until "
+                "arrival and final visual confirmation."
+            )
+        return True
+
+    def _single_visual_check(self, instruction: str, label: str) -> dict:
+        self._wait_for_live_image(timeout_sec=self.image_timeout_sec)
+        try:
+            image_path = self._get_inference_image_path(
+                instruction=f"{label}_{instruction}"
+            )
+            model_output = self.model.infer_goal_text(
+                instruction=instruction,
+                image_path=image_path,
+            )
+        except Exception as exc:
+            self.get_logger().warning(f"Visual check failed: {exc}")
+            return {
+                "ok": False,
+                "reason": f"visual_check_failed: {exc}",
+                "method": f"{label}_visual_check_failed",
+            }
+
+        model_json = self.converter.parse_model_json(model_output)
+        ok = self._model_reports_visible_target(
+            model_json=model_json,
+            instruction=instruction,
+        )
+        self.get_logger().info(
+            f"Visual check {label}: ok={ok}, image={image_path}, output={model_output}"
+        )
+        return {
+            "ok": ok,
+            "reason": "" if ok else "target_not_visible_in_visual_check",
+            "image_path": image_path,
+            "model_output": model_output,
+            "model_json": model_json,
+            "method": f"{label}_visual_check",
+        }
+
+    def _confirm_target_after_arrival(self, instruction: str) -> dict:
+        scan_result = self._visual_scan_for_target(instruction=instruction)
+        if scan_result.get("ok"):
+            scan_result["active_search_used"] = False
+            return scan_result
+
+        if not self.active_search_enabled or self.active_search_max_moves <= 0:
+            scan_result["active_search_used"] = False
+            return scan_result
+
+        last_result = scan_result
+        for move_index in range(self.active_search_max_moves):
+            direction = 1.0 if move_index % 2 == 0 else -1.0
+            self.get_logger().info(
+                "Final visual scan failed; running local active search move "
+                f"{move_index + 1}/{self.active_search_max_moves}."
+            )
+            if not self._active_search_step(direction=direction):
+                break
+            last_result = self._visual_scan_for_target(instruction=instruction)
+            last_result["active_search_used"] = True
+            if last_result.get("ok"):
+                return last_result
+
+        last_result["active_search_used"] = True
+        return last_result
+
+    def _active_search_step(self, direction: float) -> bool:
+        if self.cmd_vel_pub is None:
+            self.get_logger().warning("Cannot run active search: cmd_vel publisher missing.")
+            return False
+        speed = abs(self.active_search_linear_speed_m_s)
+        if speed <= 0.0:
+            self.get_logger().warning("active_search_linear_speed_m_s must be > 0.")
+            return False
+        distance = abs(self.active_search_forward_distance_m)
+        duration_sec = distance / speed
+        twist = Twist()
+        twist.linear.x = math.copysign(speed, direction)
+        self.get_logger().info(
+            "Active search cmd_vel move: "
+            f"distance={math.copysign(distance, direction):.2f}m, "
+            f"speed={twist.linear.x:.2f}m/s, duration={duration_sec:.2f}s"
+        )
+        try:
+            self._publish_cmd_vel_for_duration(twist, duration_sec=duration_sec)
+        finally:
+            self._publish_zero_cmd_vel()
+        self._wait_for_live_image(timeout_sec=max(0.5, self.visual_scan_settle_sec))
         return True
 
     def _navigate_to_pose(self, pose: PoseStamped) -> Tuple[str, str]:
@@ -842,6 +1230,9 @@ class VLNBridgeNodeLocal(Node):
         last_feedback_log_at = 0.0
         best_distance = None
         last_progress_at = nav_started_at
+        last_visual_check_at = nav_started_at
+        last_visual_check_x = self.latest_map_x
+        last_visual_check_y = self.latest_map_y
         within_acceptance_since = None
         effective_timeout_sec = self._effective_nav_timeout_sec(pose)
         while not self.navigator.isTaskComplete():
@@ -863,7 +1254,66 @@ class VLNBridgeNodeLocal(Node):
                 feedback_distance = float(feedback.distance_remaining)
                 map_distance = self._distance_from_latest_map_pose(pose)
                 diagnostic_odom_distance = self._distance_from_latest_odom(pose)
-                distance_for_progress = feedback_distance
+                if self._maybe_visual_check_during_nav(
+                    now=now,
+                    last_check_at=last_visual_check_at,
+                    last_check_x=last_visual_check_x,
+                    last_check_y=last_visual_check_y,
+                ):
+                    last_visual_check_at = now
+                    last_visual_check_x = self.latest_map_x
+                    last_visual_check_y = self.latest_map_y
+                if (
+                    feedback_distance <= 0.01
+                    and (
+                        (
+                            map_distance is not None
+                            and map_distance > self.nav_accept_distance_m
+                        )
+                        or (
+                            diagnostic_odom_distance is not None
+                            and diagnostic_odom_distance > self.nav_accept_distance_m
+                        )
+                    )
+                ):
+                    if now - last_feedback_log_at >= self.nav_feedback_log_interval_sec:
+                        last_feedback_log_at = now
+                        map_text = (
+                            f", amcl_to_goal={map_distance:.2f}m"
+                            if map_distance is not None
+                            else ""
+                        )
+                        odom_text = (
+                            f", raw_odom_to_goal={diagnostic_odom_distance:.2f}m"
+                            if diagnostic_odom_distance is not None
+                            else ""
+                        )
+                        self.get_logger().warning(
+                            "Ignoring inconsistent initial Nav2 feedback: "
+                            f"distance_remaining={feedback_distance:.2f}m"
+                            f"{map_text}{odom_text}."
+                        )
+                    time.sleep(0.05)
+                    continue
+                # 2026-06-23 Nav2 long-route guard:
+                # BasicNavigator feedback can briefly report 0.0 m before the
+                # action server has a valid path, and replanning can make
+                # path-length feedback oscillate. Track bridge-side progress
+                # with the current AMCL-to-goal Euclidean distance when it is
+                # available. Nav2's own SimpleProgressChecker still handles
+                # controller-level movement progress.
+                # Sources:
+                # - https://docs.nav2.org/commander_api/index.html
+                # - https://docs.nav2.org/configuration/packages/nav2_controller-plugins/simple_progress_checker.html
+                distance_for_progress = (
+                    map_distance
+                    if map_distance is not None
+                    else (
+                        diagnostic_odom_distance
+                        if diagnostic_odom_distance is not None
+                        else feedback_distance
+                    )
+                )
                 accept_distance = (
                     feedback_distance
                     if self.nav_accept_with_feedback_distance
@@ -1452,11 +1902,10 @@ class VLNBridgeNodeLocal(Node):
         else:
             message = "No live camera image has been received yet."
 
-        if self.require_fresh_image:
-            raise RuntimeError(message)
-
-        self.get_logger().warning(f"{message} Falling back to static image path.")
-        return self.image_path
+        # When a live camera topic is configured, visual evidence must come from
+        # that topic. A static fallback can make strict VLN success look valid
+        # while the robot never actually saw the target in Isaac Sim.
+        raise RuntimeError(message)
 
     def _snapshot_live_image(self, source_path: str, instruction: str) -> str:
         """Create a per-instruction immutable image path for inference and CSV logs."""
@@ -1598,6 +2047,9 @@ class VLNBridgeNodeLocal(Node):
         navigation_arrived: Optional[bool] = None,
         visual_confirmed: Optional[bool] = None,
         task_success: Optional[bool] = None,
+        target_seen_during_nav: Optional[bool] = None,
+        final_visual_confirmed: Optional[bool] = None,
+        active_search_used: Optional[bool] = None,
     ) -> dict:
         model_json = model_json or {}
         if navigation_arrived is None:
@@ -1613,6 +2065,12 @@ class VLNBridgeNodeLocal(Node):
             )
         if task_success is None:
             task_success = bool(navigation_arrived) and bool(visual_confirmed)
+        if target_seen_during_nav is None:
+            target_seen_during_nav = self._target_seen_during_nav
+        if final_visual_confirmed is None:
+            final_visual_confirmed = bool(visual_confirmed)
+        if active_search_used is None:
+            active_search_used = False
         return {
             "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
             "duration_sec": round(time.time() - started_at, 3),
@@ -1629,6 +2087,10 @@ class VLNBridgeNodeLocal(Node):
             "nav_result": nav_result,
             "navigation_arrived": navigation_arrived,
             "visual_confirmed": visual_confirmed,
+            "target_seen_during_nav": target_seen_during_nav,
+            "target_seen_during_nav_image": self._target_seen_during_nav_path,
+            "final_visual_confirmed": final_visual_confirmed,
+            "active_search_used": active_search_used,
             "task_success": task_success,
             "failure_reason": failure_reason,
         }
@@ -1658,6 +2120,10 @@ class VLNBridgeNodeLocal(Node):
             "nav_result",
             "navigation_arrived",
             "visual_confirmed",
+            "target_seen_during_nav",
+            "target_seen_during_nav_image",
+            "final_visual_confirmed",
+            "active_search_used",
             "task_success",
             "failure_reason",
         ]
@@ -1682,7 +2148,8 @@ def main(args: Optional[list] = None) -> None:
         executor.remove_node(node)
         node.model.shutdown()
         node.destroy_node()
-        rclpy.shutdown()
+        if rclpy.ok():
+            rclpy.shutdown()
 
 
 if __name__ == "__main__":

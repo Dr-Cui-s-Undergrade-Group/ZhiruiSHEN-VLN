@@ -1,0 +1,11 @@
+trial_id,timestamp,duration_sec,instruction,image_path,model_output,model_target,visible,confidence,parse_method,target_x,target_y,target_yaw,amcl_x,amcl_y,odom_x,odom_y,pose_disagreement_m,pose_health_ok,final_pose_source,final_x,final_y,final_yaw,final_error_m,within_success_radius,navigation_arrived,visual_confirmed,task_success,nav_result,failure_reason
+
+1,2026-06-23 12:36:39,162.6,Go to the purple boxes.,/home/bluepoisons/Desktop/FURP/VLN/ZhiruiSHEN-VLN/data/runtime/trial_images/trial_0008_20260623_123500_267988008_scan_08_go_to_the_purple_boxes.png,"```json
+{
+  ""target"": ""purple boxes"",
+  ""visible"": false,
+  ""confidence"": 0.0,
+  ""horizontal_position"": ""unknown"",
+  ""evidence"": ""The image shows an empty warehouse interior with a gray floor, yellow and white walls, and overhead lighting. There are no purple boxes visible in the image.""
+}
+```",purple boxes,False,0.0,semantic_explore_failed,-6.3,10.8,3.141592653589793,-0.008,0.019,-0.052,-0.006,0.051,True,amcl_pose,-0.008,0.019,0.195,12.482,False,False,False,False,stuck,Nav2 made no meaningful progress for 45.0s (best_distance=12.51m).

@@ -23,7 +23,16 @@ amcl:
     do_beamskip: false
     global_frame_id: "map"
     lambda_short: 0.1
-    laser_likelihood_max_dist: 3.0
+    # Node8 AMCL conservative test, 2026-06-23:
+    # The reboot AMCL run still drifted from raw odom by 4.20 m while the
+    # odom-truth baseline reached the same target. The projected warehouse scan
+    # contains shelf/forklift/near-wall structure that is not reliably encoded in
+    # the static occupancy map, so the likelihood-field correction can pull the
+    # particle cloud toward a wrong corridor match. For this test, broaden the
+    # hit model and reduce scan-match dominance so Isaac odometry carries more of
+    # the long-route estimate.
+    # Source: https://docs.nav2.org/configuration/packages/configuring-amcl.html
+    laser_likelihood_max_dist: 1.5
     laser_max_range: 100.0
     laser_min_range: -1.0
     laser_model_type: "likelihood_field"
@@ -38,13 +47,13 @@ amcl:
     resample_interval: 1
     robot_model_type: "nav2_amcl::DifferentialMotionModel"
     save_pose_rate: 0.5
-    sigma_hit: 0.15
+    sigma_hit: 0.30
     # Node8 odom-truth baseline: Isaac raw odom is aligned with map after reset
     # and is more physically faithful than the current AMCL scan match. Disable
     # AMCL's map->odom broadcast so a static/sim-truth map->odom transform can
     # be used for controller/costmap isolation tests.
     # Source: https://docs.nav2.org/configuration/packages/configuring-amcl.html
-    tf_broadcast: false
+    tf_broadcast: true
     transform_tolerance: 0.2
     # Node8 v5: avoid excessive AMCL corrections during near-pure rotation.
     # The v4 clean reset run with RPP rotate-to-heading produced almost no raw
@@ -52,9 +61,9 @@ amcl:
     # enough for long corridors, but less eager during tiny angular changes.
     update_min_a: 0.15
     update_min_d: 0.08
-    z_hit: 0.7
+    z_hit: 0.35
     z_max: 0.05
-    z_rand: 0.2
+    z_rand: 0.55
     z_short: 0.05
     scan_topic: scan
 

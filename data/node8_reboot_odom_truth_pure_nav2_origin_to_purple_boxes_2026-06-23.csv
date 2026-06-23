@@ -1,0 +1,3 @@
+timestamp,result,target_x,target_y,target_yaw,initial_raw_x,initial_raw_y,initial_raw_yaw,final_raw_x,final_raw_y,final_raw_yaw,raw_error_m,feedback_distance_m,feedback_count,duration_sec
+
+2026-06-23T18:38:44+0800,success,-6.3,10.8,3.141592653589793,-0.015621557831764221,3.2186508178710938e-06,-9.120653274853899e-05,-6.0847368240356445,10.53248119354248,2.2389713784141425,0.3433723150382354,0.3652987778186798,72221,723.293

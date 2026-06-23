@@ -1,0 +1,3 @@
+timestamp,result,target_x,target_y,amcl_x,amcl_y,odom_x,odom_y,pose_disagreement_m,amcl_error_m,odom_error_m,last_feedback_distance_m
+
+2026-06-23 16:05:00,success,-6.3,10.8,-6.073154546840464,10.55706094275676,-5.854966163635254,10.488908767700195,0.229,0.332,0.543,0.32
