@@ -30,6 +30,7 @@ setup(
             "node6_auto_trials = vln_nav2_bridge.node6_auto_trials:main",
             "node6_map_preflight = vln_nav2_bridge.node6_map_preflight:main",
             "node8_scan_accumulator = vln_nav2_bridge.node8_scan_accumulator:main",
+            "node8_active_visual_relocalization = vln_nav2_bridge.node8_active_visual_relocalization:main",
         ],
     },
 )

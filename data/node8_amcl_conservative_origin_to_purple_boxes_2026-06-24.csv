@@ -1,0 +1,2 @@
+timestamp,result,target_x,target_y,target_yaw,final_raw_x,final_raw_y,final_raw_yaw,final_amcl_x,final_amcl_y,final_amcl_yaw,raw_error_m,amcl_error_m,amcl_raw_disagreement_m,best_raw_error_m,best_amcl_error_m,feedback_distance_m,feedback_count,duration_sec
+2026-06-24T16:22:22+0800,canceled,-6.3,10.8,3.141592653589793,-0.3753538727760315,7.675870895385742,0.7510263462514789,-5.348055604355813,5.799357909176098,1.660711753078763,6.697881336297908,5.090443934758346,5.314984807002744,6.374983499538422,5.090443934758346,5.03367280960083,5150,618.777471673

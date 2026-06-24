@@ -49,6 +49,7 @@ class Node6AutoTrials(Node):
         timeout_sec: float,
         settle_sec: float,
         success_radius_m: float,
+        final_pose_source: str = "auto",
         max_pose_disagreement_m: float = 0.0,
         abort_on_pose_disagreement: bool = False,
         trial_offset: int = 0,
@@ -60,6 +61,7 @@ class Node6AutoTrials(Node):
         self.timeout_sec = timeout_sec
         self.settle_sec = settle_sec
         self.success_radius_m = success_radius_m
+        self.final_pose_source = final_pose_source
         self.max_pose_disagreement_m = max_pose_disagreement_m
         self.abort_on_pose_disagreement = abort_on_pose_disagreement
         self.trial_offset = trial_offset
@@ -236,8 +238,8 @@ class Node6AutoTrials(Node):
     def _append_final_pose_metrics(self, result: Dict[str, object]) -> Dict[str, object]:
         enriched = dict(result)
         enriched.update(self._pose_health_snapshot())
-        pose_source = "amcl_pose" if self.latest_pose is not None else "odom"
-        pose = self.latest_pose or self.latest_odom_pose
+        pose_source = self._select_final_pose_source()
+        pose = self._select_final_pose(pose_source)
         if pose is None:
             enriched.update(
                 {
@@ -308,6 +310,20 @@ class Node6AutoTrials(Node):
             if self.max_pose_disagreement_m > 0.0:
                 health["pose_health_ok"] = disagreement <= self.max_pose_disagreement_m
         return health
+
+    def _select_final_pose_source(self) -> str:
+        if self.final_pose_source == "odom":
+            return "odom"
+        if self.final_pose_source == "amcl_pose":
+            return "amcl_pose"
+        return "amcl_pose" if self.latest_pose is not None else "odom"
+
+    def _select_final_pose(self, pose_source: str) -> Optional[Dict[str, float]]:
+        if pose_source == "odom":
+            return self.latest_odom_pose
+        if pose_source == "amcl_pose":
+            return self.latest_pose
+        return self.latest_pose or self.latest_odom_pose
 
     def _spin_for_pose_update(self, duration_sec: float) -> None:
         deadline = time.monotonic() + max(0.0, duration_sec)
@@ -458,6 +474,12 @@ def main() -> None:
     parser.add_argument("--settle-sec", type=float, default=2.0)
     parser.add_argument("--success-radius-m", type=float, default=0.8)
     parser.add_argument(
+        "--final-pose-source",
+        choices=("auto", "amcl_pose", "odom"),
+        default="auto",
+        help="Pose source used for final error and within-radius metrics.",
+    )
+    parser.add_argument(
         "--max-pose-disagreement-m",
         type=float,
         default=0.0,
@@ -494,6 +516,7 @@ def main() -> None:
         timeout_sec=args.timeout_sec,
         settle_sec=args.settle_sec,
         success_radius_m=args.success_radius_m,
+        final_pose_source=args.final_pose_source,
         max_pose_disagreement_m=args.max_pose_disagreement_m,
         abort_on_pose_disagreement=args.abort_on_pose_disagreement,
         trial_offset=args.start_index - 1,

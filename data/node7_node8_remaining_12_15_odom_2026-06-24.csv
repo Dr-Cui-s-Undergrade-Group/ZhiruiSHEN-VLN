@@ -1,0 +1,21 @@
+trial_id,timestamp,duration_sec,instruction,image_path,model_output,model_target,visible,confidence,parse_method,target_x,target_y,target_yaw,amcl_x,amcl_y,odom_x,odom_y,pose_disagreement_m,pose_health_ok,final_pose_source,final_x,final_y,final_yaw,final_error_m,within_success_radius,navigation_arrived,visual_confirmed,target_seen_during_nav,target_seen_during_nav_image,final_visual_confirmed,active_search_used,task_success,nav_result,failure_reason
+12,2026-06-24 21:12:37,13.547,Navigate to the warehouse rack near the boxes.,/home/bluepoisons/Desktop/FURP/VLN/ZhiruiSHEN-VLN/data/runtime/trial_images/node7_node8_remaining_2026-06-24/trial_0002_20260624_211231_011713076_scan_01_navigate_to_the_warehouse_rack_near_the_.png,"```json
+{
+  ""target"": ""warehouse rack near the boxes"",
+  ""visible"": true,
+  ""confidence"": 0.95,
+  ""horizontal_position"": ""left"",
+  ""evidence"": ""The image shows a warehouse rack with purple boxes stacked on it, located on the left side of the frame. The rack is visible and positioned near the boxes.""
+}
+```",warehouse rack near the boxes,True,0.95,visual_semantic_map_observation_pose_final_visual_confirmed,-6.3,10.8,3.141592653589793,-11.588,-4.737,-6.142,10.547,16.225,False,odom,-6.142,10.547,-2.945,0.299,True,True,True,False,,True,False,True,success,
+13,2026-06-24 21:12:41,0.003,Go to the object near the wall.,,,,,,ambiguous_target,0.0,0.0,0.0,-11.588,-4.737,-6.142,10.547,16.225,False,odom,-6.142,10.547,-2.945,12.205,False,False,False,False,,False,False,False,failed,"ambiguous_target: instruction does not name a concrete known semantic target. Ask for plant, chair, shelf, purple boxes, or package area."
+14,2026-06-24 21:13:02,16.312,Move to the package area.,/home/bluepoisons/Desktop/FURP/VLN/ZhiruiSHEN-VLN/data/runtime/trial_images/node7_node8_remaining_2026-06-24/trial_0004_20260624_211255_020857902_scan_01_move_to_the_package_area.png,"```json
+{
+  ""target"": ""package area"",
+  ""visible"": true,
+  ""confidence"": 0.95,
+  ""horizontal_position"": ""left"",
+  ""evidence"": ""The image shows a warehouse environment with a yellow protective cylinder in the foreground and a stack of purple packages on a pallet to the left. The floor has red and white striped markings, which are commonly used for guiding movement and safety in warehouse areas. These elements are consistent with a package handling zone, supporting the presence of a package area.""
+}
+```",package area,True,0.95,visual_semantic_map_observation_pose_final_visual_confirmed,-6.3,10.8,3.141592653589793,-11.588,-4.737,-6.142,10.547,16.225,False,odom,-6.142,10.547,-2.945,0.299,True,True,True,False,,True,False,True,success,
+15,2026-06-24 21:13:07,0.002,Navigate to the target object.,,,,,,ambiguous_target,0.0,0.0,0.0,-11.588,-4.737,-6.142,10.547,16.225,False,odom,-6.142,10.547,-2.945,12.205,False,False,False,False,,False,False,False,failed,"ambiguous_target: instruction does not name a concrete known semantic target. Ask for plant, chair, shelf, purple boxes, or package area."

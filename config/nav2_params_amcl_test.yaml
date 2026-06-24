@@ -23,20 +23,23 @@ amcl:
     do_beamskip: false
     global_frame_id: "map"
     lambda_short: 0.1
-    # Node8 AMCL conservative test, 2026-06-23:
+    # Node8 AMCL odom-dominant test, 2026-06-24:
     # The reboot AMCL run still drifted from raw odom by 4.20 m while the
     # odom-truth baseline reached the same target. The projected warehouse scan
     # contains shelf/forklift/near-wall structure that is not reliably encoded in
     # the static occupancy map, so the likelihood-field correction can pull the
-    # particle cloud toward a wrong corridor match. For this test, broaden the
-    # hit model and reduce scan-match dominance so Isaac odometry carries more of
-    # the long-route estimate.
+    # particle cloud toward a wrong corridor match. The 2026-06-24 conservative
+    # test kept AMCL/raw disagreement under 0.5 m for the first ~380 s, then
+    # diverged to 5.31 m in the shelf/corridor region while raw odom remained
+    # 6.70 m from the target and Nav2 feedback claimed 5.03 m remaining. For
+    # this pass, make AMCL odom-dominant: keep scan corrections available, but
+    # make individual scan matches much less able to overpower Isaac odometry.
     # Source: https://docs.nav2.org/configuration/packages/configuring-amcl.html
-    laser_likelihood_max_dist: 1.5
+    laser_likelihood_max_dist: 0.75
     laser_max_range: 100.0
     laser_min_range: -1.0
     laser_model_type: "likelihood_field"
-    max_beams: 120
+    max_beams: 80
     max_particles: 4000
     min_particles: 1000
     odom_frame_id: "odom"
@@ -47,7 +50,7 @@ amcl:
     resample_interval: 1
     robot_model_type: "nav2_amcl::DifferentialMotionModel"
     save_pose_rate: 0.5
-    sigma_hit: 0.30
+    sigma_hit: 0.50
     # Node8 odom-truth baseline: Isaac raw odom is aligned with map after reset
     # and is more physically faithful than the current AMCL scan match. Disable
     # AMCL's map->odom broadcast so a static/sim-truth map->odom transform can
@@ -55,15 +58,16 @@ amcl:
     # Source: https://docs.nav2.org/configuration/packages/configuring-amcl.html
     tf_broadcast: true
     transform_tolerance: 0.2
-    # Node8 v5: avoid excessive AMCL corrections during near-pure rotation.
+    # Node8 v6: avoid excessive AMCL corrections during near-pure rotation
+    # and during shelf/corridor scan-map mismatch.
     # The v4 clean reset run with RPP rotate-to-heading produced almost no raw
     # odom translation while AMCL drifted by >1 m. Keep scan updates frequent
     # enough for long corridors, but less eager during tiny angular changes.
-    update_min_a: 0.15
-    update_min_d: 0.08
-    z_hit: 0.35
+    update_min_a: 0.25
+    update_min_d: 0.20
+    z_hit: 0.15
     z_max: 0.05
-    z_rand: 0.55
+    z_rand: 0.75
     z_short: 0.05
     scan_topic: scan
 
@@ -179,22 +183,22 @@ controller_server:
     # - Macenski et al., 2023: https://arxiv.org/abs/2305.20026
     FollowPath:
       plugin: "nav2_regulated_pure_pursuit_controller::RegulatedPurePursuitController"
-      desired_linear_vel: 0.18
-      lookahead_dist: 0.8
+      desired_linear_vel: 0.32
+      lookahead_dist: 1.0
       min_lookahead_dist: 0.3
-      max_lookahead_dist: 1.1
+      max_lookahead_dist: 1.4
       lookahead_time: 1.5
       rotate_to_heading_angular_vel: 0.9
       transform_tolerance: 2.0
       use_velocity_scaled_lookahead_dist: false
-      min_approach_linear_velocity: 0.05
+      min_approach_linear_velocity: 0.08
       approach_velocity_scaling_dist: 0.6
       use_collision_detection: true
       max_allowed_time_to_collision_up_to_carrot: 1.0
       use_regulated_linear_velocity_scaling: true
       use_cost_regulated_linear_velocity_scaling: false
       regulated_linear_scaling_min_radius: 0.9
-      regulated_linear_scaling_min_speed: 0.08
+      regulated_linear_scaling_min_speed: 0.12
       use_fixed_curvature_lookahead: false
       curvature_lookahead_dist: 0.6
       # Disabled again after the Node8 v4 clean reset run: Carter received
@@ -376,8 +380,8 @@ velocity_smoother:
     smoothing_frequency: 20.0
     scale_velocities: False
     feedback: "OPEN_LOOP"
-    max_velocity: [0.26, 0.0, 1.0]
-    min_velocity: [-0.26, 0.0, -1.0]
+    max_velocity: [0.36, 0.0, 1.1]
+    min_velocity: [-0.36, 0.0, -1.1]
     max_accel: [2.5, 0.0, 3.2]
     max_decel: [-2.5, 0.0, -3.2]
     # OPEN_LOOP smoothing does not use odom feedback for control, but keeping

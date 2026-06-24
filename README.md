@@ -30,6 +30,11 @@ docs/node7_safe_recovery_note.md
 docs/node7_online_clean_rerun_report.md
 docs/literature_alignment_note.md
 docs/node7_observation_pose_note.md
+docs/final_simulation_report.md
+docs/node8_evidence_matrix.md
+docs/node8_long_distance_status_2026-06-24.md
+docs/node8_long_distance_status_2026-06-24.docx
+docs/data_inventory_2026-06-24.md
 docs/status_transfer_2026-06-16.txt
 logs/week(2026-06-22-2026-06-28).md
 ```
@@ -81,9 +86,73 @@ data/node8_rpp_v2_purple_boxes_health_2026-06-23.csv
 - Nav2 AMCL 配置：<https://docs.nav2.org/configuration/packages/configuring-amcl.html>
 - Nav2 costmap / inflation tuning：<https://docs.nav2.org/tuning/index.html>
 
-### Node 8 最新状态（2026-06-23 晚）
+### Node 8 最新状态（2026-06-24）
 
-当前结论：Node 8 的 purple-box targeted 长距离链路已经在 odom-truth localization baseline 下跑通，并且在 Isaac Sim 重启后复现成功；AMCL 长距离定位仍未解决。严格 VLN task success 仍必须是 `navigation_arrived AND visual_confirmed`，仅 Nav2 到达不能算最终成功。
+当前结论：Node 8 的 purple-box targeted 长距离链路已经完成一次 strict active-visual AMCL reanchor 成功；同时 odom-truth localization baseline 也可复现。注意这不是纯 AMCL scan matching 独立稳定成功，scan-only AMCL 长距离定位仍是当前 limitation。严格 VLN task success 仍必须是 `navigation_arrived AND visual_confirmed`，仅 Nav2 到达不能算最终成功。
+
+### Node 8 更新：AMCL + 主动视觉重锚 strict 成功（2026-06-24）
+
+2026-06-24，Node 8 `origin -> purple boxes` 长距离 targeted case 已在 AMCL 路线下完成一次 strict VLN 闭环：
+
+```text
+data/node8_active_visual_reanchor_final_search_2026-06-24.csv
+```
+
+核心结果：
+
+| 指标 | 结果 |
+|---|---:|
+| `nav_result` | `success` |
+| `navigation_arrived` | `True` |
+| `final_visual_confirmed` | `True` |
+| `task_success` | `True` |
+| final raw error | `0.255 m` |
+| final AMCL/raw disagreement | `0.077 m` |
+| max AMCL/raw disagreement | `1.570 m` |
+| AMCL reanchor count | `10` |
+
+本次成功不是纯 AMCL scan matching 独立稳定成功，而是以下闭环共同作用：
+
+- 起点主动视觉旋转，识别到 `purple boxes` 所在视觉扇区；
+- 视觉命中后允许 AMCL re-anchor 到 Isaac raw odom；
+- 长距离导航中监控 AMCL/raw disagreement，超过阈值后重锚；
+- 到达物理半径后执行 final active visual search；
+- final search 第 4 个视角确认 `purple boxes`，confidence `0.95`。
+
+因此当前可写结论是：Node 8 long-distance strict VLN targeted case 已跑通；但 AMCL scan-only 长距离稳定性仍是 limitation。
+
+AMCL 地图诊断图：
+
+![Node 8 AMCL map diagnostic overlay](assets/node8_map_diagnostics_reanchor_overlay_2026-06-24.png)
+
+该图把 origin、purple-box 目标、最终位姿和导航中 reanchor 点投影到 `warehouse_map.png` 上。检查结果显示目标点、最终点和 reanchor 路径都在 free cell 内，因此问题不是“目标点在障碍物里”。更可能的问题是静态 occupancy map 对 shelf / forklift / purple-box 区域表达过粗，和 Isaac rolling `/scan` 看到的真实几何不一致，导致 AMCL likelihood-field 在后段 shelf/corridor 区域被错误 scan-map match 拉偏。
+
+局部目标区裁剪图：
+
+![Node 8 target map crop](assets/node8_map_diagnostics_target_crop_2026-06-24.png)
+
+下一步如果继续修 AMCL，应优先做 scan-map residual 诊断或重建/修正 occupancy map；如果不重建地图，则保留 visual-anchor gated reanchor 作为对地图不一致的鲁棒补偿。
+
+2026-06-24 收束报告已新增：
+
+```text
+docs/final_simulation_report.md
+```
+
+该报告把 Node 6/7 的 15-trial benchmark、Node 8 odom-truth targeted 成功、2026-06-24 strict active-visual AMCL reanchor 成功、失败的 scan-only AMCL CSV、以及地图诊断分开记录。当前可写进 poster 的 Node 8 结论是 targeted strict VLN closure with visual-anchor gated AMCL reanchoring，不是 scan-only AMCL-localized full 15-trial completion。
+
+Node 8 证据矩阵见：
+
+```text
+docs/node8_evidence_matrix.md
+```
+
+2026-06-24 长距离 AMCL 继续调参的中英文报告素材：
+
+```text
+docs/node8_long_distance_status_2026-06-24.md
+docs/node8_long_distance_status_2026-06-24.docx
+```
 
 2026-06-23 20:23 CST 追加：bridge 已加入 `semantic_nav_first_enabled`。对已知远距离语义目标，系统会先导航到 semantic observation pose，再做 final visual scan；不再从起点先做 8-step 360-degree visual scan。这个策略与 VLFM / VL-Nav / 3D-Aware ObjectNav 中“移动过程中收集视觉证据、到达候选区后确认目标”的思路一致，但本项目仍保持严格成功条件：`task_success = navigation_arrived AND final_visual_confirmed`。
 
@@ -233,9 +302,9 @@ config/nav2_params_amcl_test.yaml
 
 下一步：
 
-1. 保留 odom-truth baseline 作为仿真中可复现的 Node 8 purple-box targeted 成功链路。
-2. 继续修 AMCL：重点检查 `/scan` 与静态地图对齐、粒子滤波 motion model、`/chassis/odom` 与 Nav2 `/odom` frame 一致性，并验证 `config/nav2_params_amcl_test.yaml` 的 conservative scan model。
-3. 只有 AMCL 版本也能让 raw odom 进入目标半径并通过 final visual scan，才把 Node 8 写成 AMCL-localized 全链路完成。
+1. 保留 2026-06-24 strict active-visual AMCL reanchor CSV 和 final visual image 作为 Node 8 purple-box targeted 成功链路。
+2. 保留 odom-truth baseline 作为可复现的导航控制正证据。
+3. 如果继续修 scan-only AMCL，优先检查 `/scan` 与静态地图 residual，而不是继续盲调 AMCL 参数。
 4. 后续需要扩展到 full 15-instruction rerun，不能用单条 purple-box targeted case 代表完整 benchmark。
 
 补充来源：
