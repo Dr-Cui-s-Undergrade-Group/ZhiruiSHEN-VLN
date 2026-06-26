@@ -6,14 +6,14 @@
 
 重启电脑后可先参考环境快速恢复手册：[reset.md](reset.md)
 
-## 当前进度总览（2026-06-23）
+## 当前进度总览（2026-06-24）
 
 | 节点 | 状态 | 主要产出 |
 |---|---|---|
 | Node 1-5 | 已完成 | Isaac Sim/ROS 2 通信、Nav2 基础导航、本地 Qwen3-VL 感知、VLN-Nav2 bridge。 |
 | Node 6 | 已完成 | 15 条 integrated simulation evaluation、最终 CSV、failure taxonomy、复现实验报告和结果图表。 |
 | Node 7 | 已完成 | 指标拆分、shelf/package 语义确认修复、safe-start/safe-goal/dynamic timeout、ablation report 和 safe recovery replay。 |
-| Node 8 | targeted case 已打通，AMCL 待继续 | Nav2 长距离导航调参：motion-compensated rolling scan + RPP + odom-truth baseline 已完成 origin -> purple boxes，并通过 strict final visual confirmation；AMCL 长距离定位仍需继续修。 |
+| Node 8 | 仿真收口，真机待迁移 | odom-truth baseline 12/15 strict；scan-only AMCL 从 0/15 提升到 5/15（truth map，近距离全通）；odom-dominant AMCL 配置 + truth map 重建 + Carter 脱困逻辑全部就绪，被 Isaac sim-time 不稳定阻断完整验证；两个仿真瓶颈（地图覆盖 + sim-time）真机上都会消失。详见 `docs/odom_vs_scanonly_report.md`。 |
 | Node 9 | 待开始 | 迁移到实体机器人并整理部署指南。 |
 
 Node 6/7 已经收尾，不需要继续按 Node 6 blocker 重跑。2026-06-23 起，Node 8 的优先级调整为 Nav2 长距离导航调参：先解决 shelf/package/purple boxes 等远距离目标只能近距离成功的问题，再整理最终报告和 poster 材料。已有仿真证据仍基于以下文件：
@@ -35,7 +35,13 @@ docs/node8_evidence_matrix.md
 docs/node8_long_distance_status_2026-06-24.md
 docs/node8_long_distance_status_2026-06-24.docx
 docs/data_inventory_2026-06-24.md
-docs/status_transfer_2026-06-16.txt
+docs/odom_vs_scanonly_report.md
+docs/paper_framework.md
+data/node7_node8_full15_clean_odom_2026-06-24.csv
+data/node7_node8_full15_scanonly_amcl_2026-06-25.csv
+data/warehouse_map_truth.yaml
+data/warehouse_map_truth.pgm
+config/nav2_params_lowload.yaml
 logs/week(2026-06-22-2026-06-28).md
 ```
 
@@ -48,6 +54,11 @@ logs/week(2026-06-22-2026-06-28).md
 | Node 7 offline optimized task success | 11/15 | 基于 Node 6 final CSV 的指标拆分 + shelf/package relaxed confirmation 离线复算。 |
 | Node 7 clean online task success | 8/15 | 2026-06-15 完整在线 clean rerun，严格 visual task success。 |
 | Node 7 clean online physical arrival | 13/15 | 同一在线 rerun 中最终位姿进入 0.8 m 成功半径。 |
+| Node 7/8 clean online task success | 12/15 | 2026-06-24 clean full-15 rerun，使用 odom final metrics。 |
+| Node 7/8 clean online physical arrival | 13/15 | 同一 clean full-15 中 13 条进入 0.8 m 半径。 |
+| Node 7/8 concrete-target success after hotfix | 13/13 | Trial 11 safe-start hotfix 单条复测成功；Trial 13/15 为 ambiguous target 拒绝。 |
+| Node 7/8 scan-only AMCL task success (truth map) | 5/15 | 2026-06-25 scan-only full-15 rerun，truth map。近距离 plant/chair 5/5 全通，长距离货架区 AMCL 漂移。详见 `docs/odom_vs_scanonly_report.md`。 |
+| Node 7/8 scan-only AMCL task success (原始地图) | 0/15 | 原始 warehouse_map 97% 错配，AMCL 完全不可用（Trial 1 卡死）。 |
 | Node 7 observation-pose targeted task success | 5/6 | 2026-06-15 clean targeted rerun，plant/chair observation pose 验证。 |
 | Node 7 relaxed shelf confirmations | 4 | 修复 Trials 8-11 的 shelf/package 语义确认 undercount。 |
 | Node 7 offline remaining failures | 4/15 | 离线复算中仍未解决的模糊目标或视觉/语义地图确认失败。 |
@@ -66,6 +77,22 @@ assets/node7_ablation_comparison.png
 2026-06-15 已完成 Node 7 clean online rerun。严格 task success 为 8/15，最终位姿进入 0.8 m 半径为 13/15。该结果可用于 poster/paper，但必须同时报告 physical arrival 与 visual task success，不能写成完美 15/15。
 
 2026-06-16 的最新 full clean observation-pose evaluation 是当前更保守的长距离导航 baseline：严格 task success 为 5/15，physical arrival 为 6/15，visual confirmed 为 6/15。不要把 2026-06-15 targeted plant/chair 的 5/6 结果写成 full 15-trial 结果。
+
+2026-06-24 已完成 Node 7/8 clean full-15 online rerun：
+
+```text
+data/node7_node8_full15_clean_odom_2026-06-24.csv
+```
+
+该 clean CSV 使用 `--timeout-sec 1500 --final-pose-source odom`，结果为 strict task success `12/15`、physical arrival `13/15`。Trial 13 `Go to the object near the wall.` 和 Trial 15 `Navigate to the target object.` 是当前严格策略下的 ambiguous target 拒绝。Trial 11 `Move to the right shelf.` 在 clean CSV 中是 safe-start 假失败：raw odom 已在目标 `0.300 m` 内且视觉识别到 right shelf，但 AMCL 漂移到地图外导致 safe-start 拒绝。
+
+已修复 safe-start：当 AMCL pose 不安全但 fresh raw odom pose 在 free cell 内时，允许 odom-truth navigation 继续。单条 hotfix 复测：
+
+```text
+data/node7_node8_trial11_hotfix_odom_2026-06-24.csv
+```
+
+Trial 11 hotfix 复测 `task_success=True`，final odom error `0.300 m`。因此当前最准确写法是：clean full-15 原始 CSV 为 `12/15` strict success；经过 safe-start hotfix 后，所有 13 条 concrete/non-ambiguous target 指令均有在线成功证据，2 条 intentionally ambiguous 指令被拒绝。
 
 ### Node 8 Nav2 长距离调参依据
 

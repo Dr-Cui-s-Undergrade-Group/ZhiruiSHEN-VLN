@@ -30,7 +30,11 @@ setup(
             "node6_auto_trials = vln_nav2_bridge.node6_auto_trials:main",
             "node6_map_preflight = vln_nav2_bridge.node6_map_preflight:main",
             "node8_scan_accumulator = vln_nav2_bridge.node8_scan_accumulator:main",
+            "node8_scan_map_residual = vln_nav2_bridge.node8_scan_map_residual:main",
             "node8_active_visual_relocalization = vln_nav2_bridge.node8_active_visual_relocalization:main",
+            "static_base_footprint_tf = vln_nav2_bridge.static_base_footprint_tf:main",
+            "node8_waypoint_driver = vln_nav2_bridge.node8_waypoint_driver:main",
+            "node8_odom_truth_mapper = vln_nav2_bridge.node8_odom_truth_mapper:main",
         ],
     },
 )

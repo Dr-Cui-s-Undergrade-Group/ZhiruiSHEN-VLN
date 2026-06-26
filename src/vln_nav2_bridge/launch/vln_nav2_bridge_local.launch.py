@@ -58,6 +58,7 @@ def generate_launch_description() -> LaunchDescription:
             DeclareLaunchArgument("nav_stuck_recovery_backup_duration_sec", default_value="1.0"),
             DeclareLaunchArgument("nav_stuck_recovery_turn_speed_rad_s", default_value="0.35"),
             DeclareLaunchArgument("nav_stuck_recovery_turn_duration_sec", default_value="1.0"),
+            DeclareLaunchArgument("safe_map_yaml", default_value=""),
             Node(
                 package="vln_nav2_bridge",
                 executable="vln_node_local",
@@ -109,6 +110,7 @@ def generate_launch_description() -> LaunchDescription:
                     {"nav_stuck_recovery_backup_duration_sec": LaunchConfiguration("nav_stuck_recovery_backup_duration_sec")},
                     {"nav_stuck_recovery_turn_speed_rad_s": LaunchConfiguration("nav_stuck_recovery_turn_speed_rad_s")},
                     {"nav_stuck_recovery_turn_duration_sec": LaunchConfiguration("nav_stuck_recovery_turn_duration_sec")},
+                    {"safe_map_yaml": LaunchConfiguration("safe_map_yaml")},
                 ],
             )
         ]

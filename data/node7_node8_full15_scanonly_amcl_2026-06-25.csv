@@ -1,0 +1,56 @@
+trial_id,timestamp,duration_sec,instruction,image_path,model_output,model_target,visible,confidence,parse_method,target_x,target_y,target_yaw,amcl_x,amcl_y,odom_x,odom_y,pose_disagreement_m,pose_health_ok,final_pose_source,final_x,final_y,final_yaw,final_error_m,within_success_radius,navigation_arrived,visual_confirmed,target_seen_during_nav,target_seen_during_nav_image,final_visual_confirmed,active_search_used,task_success,nav_result,failure_reason
+1,2026-06-26 00:59:05,109.562,Go to the plant.,/home/bluepoisons/Desktop/FURP/VLN/ZhiruiSHEN-VLN/data/runtime/trial_images/trial_0004_20260626_005859_351832868_scan_01_go_to_the_plant.png,"```json
+{
+  ""target"": ""plant"",
+  ""visible"": true,
+  ""confidence"": 0.95,
+  ""horizontal_position"": ""right"",
+  ""evidence"": ""The plant is visible in the image, positioned on the right side of the room, in a black pot on the floor.""
+}
+```",plant,True,0.95,semantic_nav_first_final_visual_confirmed,0.35,-2.92,3.141592653589793,0.462,-2.509,0.487,-2.658,0.152,True,odom,0.487,-2.658,-1.747,0.296,True,True,True,True,/home/bluepoisons/Desktop/FURP/VLN/ZhiruiSHEN-VLN/data/runtime/trial_images/trial_0003_20260626_005808_900562157_during_nav_go_to_the_plant.png,True,False,True,success,
+2,2026-06-26 00:59:25,15.77,Move to the potted plant on the floor.,/home/bluepoisons/Desktop/FURP/VLN/ZhiruiSHEN-VLN/data/runtime/trial_images/trial_0006_20260626_005918_944932750_scan_01_move_to_the_potted_plant_on_the_floor.png,"```json
+{
+  ""target"": ""potted plant on the floor"",
+  ""visible"": true,
+  ""confidence"": 0.95,
+  ""horizontal_position"": ""center"",
+  ""evidence"": ""The potted plant is visible on the floor in the center-right portion of the image.""
+}
+```",potted plant on the floor,True,0.95,visual_semantic_map_observation_pose_final_visual_confirmed,0.35,-2.92,3.141592653589793,0.462,-2.509,0.488,-2.658,0.151,True,odom,0.488,-2.658,-1.747,0.296,True,True,True,False,,True,False,True,success,
+3,2026-06-26 00:59:45,16.739,Navigate to the green plant near the chair.,/home/bluepoisons/Desktop/FURP/VLN/ZhiruiSHEN-VLN/data/runtime/trial_images/trial_0008_20260626_005938_596778415_scan_01_navigate_to_the_green_plant_near_the_cha.png,"```json
+{
+  ""target"": ""green plant"",
+  ""visible"": true,
+  ""confidence"": 0.95,
+  ""horizontal_position"": ""center"",
+  ""evidence"": ""The green plant is visible in the image, positioned in the center-right area of the frame. It is located in a black planter on the floor, and is clearly in the center of the visual field.""
+}
+```",green plant,True,0.95,visual_semantic_map_observation_pose_final_visual_confirmed,0.35,-2.92,3.141592653589793,0.462,-2.509,0.488,-2.657,0.151,True,odom,0.488,-2.657,-1.746,0.297,True,True,True,False,,True,False,True,success,
+4,2026-06-26 01:05:03,313.364,Go to the black office chair.,/home/bluepoisons/Desktop/FURP/VLN/ZhiruiSHEN-VLN/data/runtime/trial_images/trial_0029_20260626_010457_166394797_scan_04_go_to_the_black_office_chair.png,"```json
+{
+  ""target"": ""black office chair"",
+  ""visible"": true,
+  ""confidence"": 0.95,
+  ""horizontal_position"": ""left"",
+  ""evidence"": ""A black office chair is visible on the left side of the image, partially in the frame.""
+}
+```",black office chair,True,0.95,semantic_explore_final_visual_confirmed,0.2,-0.69,3.141592653589793,0.39,-1.093,0.237,-0.694,0.427,True,odom,0.237,-0.694,-3.12,0.037,True,True,True,True,/home/bluepoisons/Desktop/FURP/VLN/ZhiruiSHEN-VLN/data/runtime/trial_images/trial_0017_20260626_010233_982810448_during_nav_go_to_the_black_office_chair.png,True,True,True,success,
+5,2026-06-26 01:08:27,200.652,Move to the chair near the robot.,/home/bluepoisons/Desktop/FURP/VLN/ZhiruiSHEN-VLN/data/runtime/trial_images/trial_0047_20260626_010820_747153826_scan_01_move_to_the_chair_near_the_robot.png,"```json
+{
+  ""target"": ""chair"",
+  ""visible"": true,
+  ""confidence"": 0.95,
+  ""horizontal_position"": ""left"",
+  ""evidence"": ""A black chair with a chrome frame is visible on the left side of the image, positioned on the floor near the edge of the frame.""
+}
+```",chair,True,0.95,visual_semantic_map_observation_pose_final_visual_confirmed,0.2,-0.69,3.141592653589793,0.179,-1.099,-0.006,-0.501,0.625,True,odom,-0.006,-0.501,-2.953,0.279,True,True,True,False,,True,True,True,success,
+6,2026-06-26 01:11:02,151.284,Navigate to the chair beside the plant.,,,,,,semantic_nav_first_failed,0.35,-2.92,3.141592653589793,0.147,-2.145,-0.258,-1.699,0.603,True,odom,-0.258,-1.699,-1.994,1.364,False,False,False,True,/home/bluepoisons/Desktop/FURP/VLN/ZhiruiSHEN-VLN/data/runtime/trial_images/trial_0048_20260626_010918_581911171_during_nav_navigate_to_the_chair_beside_the_plan.png,False,False,False,stuck,Nav2 made no meaningful progress for 45.0s (best_distance=1.35m).
+7,2026-06-26 01:12:37,92.546,Go to the purple boxes.,,,,,,semantic_nav_first_failed,-6.3,10.8,3.141592653589793,0.147,-2.145,-0.295,-1.676,0.644,True,odom,-0.295,-1.676,-2.062,13.846,False,False,False,False,,False,False,False,stuck,Nav2 made no meaningful progress for 45.0s (best_distance=13.86m).
+8,2026-06-26 01:14:13,92.593,Move to the right shelf with purple boxes.,,,,,,semantic_nav_first_failed,-6.3,10.8,3.141592653589793,0.147,-2.145,-0.303,-1.671,0.653,True,odom,-0.303,-1.671,-2.074,13.838,False,False,False,False,,False,False,False,stuck,Nav2 made no meaningful progress for 45.0s (best_distance=13.84m).
+9,2026-06-26 01:15:49,92.577,Navigate to the shelf area containing purple packages.,,,,,,semantic_nav_first_failed,-6.3,10.8,3.141592653589793,0.147,-2.145,-0.308,-1.668,0.659,True,odom,-0.308,-1.668,-2.072,13.834,False,False,False,False,,False,False,False,stuck,Nav2 made no meaningful progress for 45.0s (best_distance=13.84m).
+10,2026-06-26 01:17:24,92.722,Go to the shelf.,,,,,,semantic_nav_first_failed,-6.3,10.8,3.141592653589793,0.147,-2.145,-0.311,-1.669,0.661,True,odom,-0.311,-1.669,-2.076,13.832,False,False,False,False,,False,False,False,stuck,Nav2 made no meaningful progress for 45.0s (best_distance=13.83m).
+11,2026-06-26 01:19:00,92.718,Move to the right shelf.,,,,,,semantic_nav_first_failed,-6.3,10.8,3.141592653589793,0.147,-2.145,-0.312,-1.668,0.662,True,odom,-0.312,-1.668,-2.073,13.832,False,False,False,False,,False,False,False,stuck,Nav2 made no meaningful progress for 45.0s (best_distance=13.83m).
+12,2026-06-26 01:20:36,92.545,Navigate to the warehouse rack near the boxes.,,,,,,semantic_nav_first_failed,-6.3,10.8,3.141592653589793,0.147,-2.145,-0.313,-1.667,0.664,True,odom,-0.313,-1.667,-2.069,13.829,False,False,False,False,,False,False,False,stuck,Nav2 made no meaningful progress for 45.0s (best_distance=13.83m).
+13,2026-06-26 01:20:39,0.001,Go to the object near the wall.,,,,,,ambiguous_target,0.0,0.0,0.0,0.147,-2.145,-0.313,-1.666,0.664,True,odom,-0.313,-1.666,-2.069,1.696,False,False,False,False,,False,False,False,failed,"ambiguous_target: instruction does not name a concrete known semantic target. Ask for plant, chair, shelf, purple boxes, or package area."
+14,2026-06-26 01:22:15,92.612,Move to the package area.,,,,,,semantic_nav_first_failed,-6.3,10.8,3.141592653589793,0.147,-2.145,-0.315,-1.665,0.666,True,odom,-0.315,-1.665,-2.07,13.828,False,False,False,False,,False,False,False,stuck,Nav2 made no meaningful progress for 45.0s (best_distance=13.83m).
+15,2026-06-26 01:22:18,0.0,Navigate to the target object.,,,,,,ambiguous_target,0.0,0.0,0.0,0.147,-2.145,-0.315,-1.665,0.666,True,odom,-0.315,-1.665,-2.071,1.695,False,False,False,False,,False,False,False,failed,"ambiguous_target: instruction does not name a concrete known semantic target. Ask for plant, chair, shelf, purple boxes, or package area."

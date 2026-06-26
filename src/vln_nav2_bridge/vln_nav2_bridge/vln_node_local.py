@@ -1499,6 +1499,18 @@ class VLNBridgeNodeLocal(Node):
         if check.ok(self.safe_pose_min_free_ratio):
             return None
 
+        odom_check = self._safe_start_odom_check()
+        if odom_check is not None and odom_check.ok(self.safe_pose_min_free_ratio):
+            self.get_logger().warning(
+                "Safe-start AMCL pose is invalid, but raw odom pose is safe; "
+                "continuing with odom-truth navigation. "
+                f"amcl=({check.x:.2f}, {check.y:.2f}), "
+                f"amcl_center={check.center_state}, amcl_free={check.free_ratio:.1%}; "
+                f"odom=({odom_check.x:.2f}, {odom_check.y:.2f}), "
+                f"odom_center={odom_check.center_state}, odom_free={odom_check.free_ratio:.1%}."
+            )
+            return None
+
         nearest = self.occupancy_map.find_nearest_free_pose(
             x=float(self.latest_map_x),
             y=float(self.latest_map_y),
@@ -1532,6 +1544,19 @@ class VLNBridgeNodeLocal(Node):
             )
         finally:
             self._safe_start_recovery_active = False
+
+    def _safe_start_odom_check(self):
+        if self.latest_odom_x is None or self.latest_odom_y is None:
+            return None
+        if time.monotonic() - self.latest_odom_wall_time > 2.0:
+            return None
+        return self.occupancy_map.check_pose(
+            name="safe_start_odom",
+            x=float(self.latest_odom_x),
+            y=float(self.latest_odom_y),
+            yaw=0.0,
+            radius_m=self.safe_pose_check_radius_m,
+        )
 
     def _effective_nav_timeout_sec(self, pose: PoseStamped) -> float:
         if not self.dynamic_timeout_enabled:
