@@ -62,7 +62,7 @@ class VLNBridgeNodeLocal(Node):
         self.declare_parameter("safe_max_y", 15.0)
         self.declare_parameter("nav_timeout_sec", 240.0)
         self.declare_parameter("nav_feedback_log_interval_sec", 5.0)
-        self.declare_parameter("inference_mode", "server")
+        self.declare_parameter("inference_mode", "api")
         self.declare_parameter("conda_env", "isaaclab")
         self.declare_parameter(
             "model_python_executable",

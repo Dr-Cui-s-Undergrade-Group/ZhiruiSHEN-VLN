@@ -1,0 +1,4 @@
+# Orange Pi robot-side Python packages.
+# Install ROS 2/Nav2 packages with apt first; see requirements-orange-pi.md.
+numpy
+pillow

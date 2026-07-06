@@ -13,7 +13,14 @@ setup(
             "share/" + package_name + "/launch",
             [
                 "launch/pointcloud_to_scan_bridge.launch.py",
+                "launch/rviz_track.launch.py",
                 "launch/vln_nav2_bridge_local.launch.py",
+            ],
+        ),
+        (
+            "share/" + package_name + "/config",
+            [
+                "config/robot_track.rviz",
             ],
         ),
     ],
@@ -35,6 +42,10 @@ setup(
             "static_base_footprint_tf = vln_nav2_bridge.static_base_footprint_tf:main",
             "node8_waypoint_driver = vln_nav2_bridge.node8_waypoint_driver:main",
             "node8_odom_truth_mapper = vln_nav2_bridge.node8_odom_truth_mapper:main",
+            "odom_tf_broadcaster = vln_nav2_bridge.odom_tf_broadcaster:main",
+            "odom_to_path = vln_nav2_bridge.odom_to_path:main",
+            "pointcloud_to_map_cloud = vln_nav2_bridge.pointcloud_to_map_cloud:main",
+            "save_pointcloud_snapshot = vln_nav2_bridge.save_pointcloud_snapshot:main",
         ],
     },
 )

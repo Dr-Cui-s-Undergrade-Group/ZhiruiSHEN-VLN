@@ -70,7 +70,7 @@ class Node8ActiveVisualRelocalization(Node):
         self.declare_parameter("final_visual_steps", 8)
         self.declare_parameter("final_visual_confidence_threshold", 0.65)
         self.declare_parameter("model_path", "/home/bluepoisons/Desktop/FURP/VLN/models/Qwen3-VL-2B-Instruct")
-        self.declare_parameter("inference_mode", "server")
+        self.declare_parameter("inference_mode", "api")
         self.declare_parameter("max_new_tokens", 256)
         self.declare_parameter("model_startup_timeout_sec", 300.0)
         self.declare_parameter("inference_request_timeout_sec", 180.0)

@@ -13,7 +13,7 @@ def generate_launch_description() -> LaunchDescription:
             DeclareLaunchArgument("require_fresh_image", default_value="false"),
             DeclareLaunchArgument("nav_timeout_sec", default_value="240.0"),
             DeclareLaunchArgument("nav_feedback_log_interval_sec", default_value="5.0"),
-            DeclareLaunchArgument("inference_mode", default_value="server"),
+            DeclareLaunchArgument("inference_mode", default_value="api"),
             DeclareLaunchArgument("allow_inference_fallback", default_value="false"),
             DeclareLaunchArgument("force_cpu", default_value="false"),
             DeclareLaunchArgument("gpu_device", default_value="0"),

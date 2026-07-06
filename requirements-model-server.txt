@@ -1,0 +1,9 @@
+# External Qwen3-VL model server Python packages.
+# Use this on an x86_64 GPU machine, not on the Orange Pi robot controller.
+torch
+torchvision
+transformers
+accelerate
+bitsandbytes
+pillow
+safetensors
